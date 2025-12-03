@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, CommandInteraction, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType } from 'discord.js';
 import { walletService } from '../services/WalletService';
 import { isAppError } from '../utils/errors';
+import { getInteractionLanguage, t } from '../utils/i18n';
 
 export const data = new SlashCommandBuilder()
     .setName('deposit')
@@ -44,20 +45,20 @@ async function handleInvoiceDeposit(interaction: CommandInteraction) {
     const amount = interaction.options.getInteger('amount', true);
     
     await interaction.deferReply({ ephemeral: true });
+    const lang = getInteractionLanguage(interaction);
 
     try {
         const { pr, hash } = await walletService.createDepositInvoice(amount);
 
         const confirmButton = new ButtonBuilder()
             .setCustomId(`confirm_deposit_${hash}_${amount}`)
-            .setLabel('Confirm Payment')
+            .setLabel(t('deposit.invoice.button', lang))
             .setStyle(ButtonStyle.Success);
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton);
 
         const response = await interaction.editReply({
-            content: `Here is your Lightning invoice for ${amount} sats. After paying, press the button below to confirm.\n\n` +
-                     `**Invoice:** \`\`\`${pr}\`\`\``,
+            content: t('deposit.invoice.prompt', lang, { amount: amount.toString(), invoice: pr }),
             components: [row],
         });
 
@@ -71,23 +72,23 @@ async function handleInvoiceDeposit(interaction: CommandInteraction) {
                 await i.deferUpdate();
                 const success = await walletService.confirmDeposit(i.user.id, amount, hash);
                 if (success) {
-                    await i.editReply({ content: `✅ Deposit successful! ${amount} sats have been added to your balance.`, components: [] });
+                    await i.editReply({ content: t('deposit.invoice.success', lang, { amount: amount.toString() }), components: [] });
                     collector.stop();
                 } else {
-                    await i.followUp({ content: 'Payment not detected yet. Please try again in a few moments.', ephemeral: true });
+                    await i.followUp({ content: t('deposit.invoice.pending', lang), ephemeral: true });
                 }
             }
         });
 
         collector.on('end', collected => {
             if (collected.size === 0) {
-                interaction.editReply({ content: 'This deposit confirmation has expired.', components: [] });
+                interaction.editReply({ content: t('deposit.invoice.expired', lang), components: [] });
             }
         });
 
     } catch (error) {
         console.error('Error creating deposit invoice:', error);
-        const message = isAppError(error) ? error.message : 'Could not create a deposit invoice at this time.';
+        const message = isAppError(error) ? error.message : t('deposit.invoice.error', lang);
         await interaction.editReply({ content: message, components: [] });
     }
 }
@@ -96,13 +97,14 @@ async function handleTokenDeposit(interaction: CommandInteraction) {
     if (!interaction.isChatInputCommand()) return;
     const token = interaction.options.getString('encoded_token', true);
     await interaction.deferReply({ ephemeral: true });
+    const lang = getInteractionLanguage(interaction);
 
     try {
         const { amount } = await walletService.redeemTokenForDeposit(interaction.user.id, token);
-        await interaction.editReply(`✅ Deposit successful! Redeemed a token for ${amount} sats.`);
+        await interaction.editReply(t('deposit.token.success', lang, { amount: amount.toString() }));
     } catch (error) {
         console.error('Error redeeming token:', error);
-        const message = isAppError(error) ? error.message : 'Could not redeem the provided token. It might be invalid, expired, or already spent.';
+        const message = isAppError(error) ? error.message : t('deposit.token.failure', lang);
         await interaction.editReply(message);
     }
 }

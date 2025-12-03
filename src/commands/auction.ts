@@ -7,6 +7,7 @@ import { auctionService } from '../services/AuctionService';
 import { AppError, isAppError } from '../utils/errors';
 import '../utils/env';
 import { canManageAuction } from '../utils/permissions';
+import { getInteractionLanguage, t } from '../utils/i18n';
 
 const resolveDefaultCollateralRatio = () => {
     const raw = process.env.DEFAULT_COLLATERAL_RATIO ?? '20';
@@ -95,6 +96,7 @@ async function handleCreateAuction(interaction: CommandInteraction) {
     await interaction.deferReply();
 
     try {
+        const lang = getInteractionLanguage(interaction);
         const title = interaction.options.getString('title', true);
         const startPrice = interaction.options.getInteger('start_price', true);
         const endTimeStr = interaction.options.getString('end_time') ?? '24h';
@@ -109,7 +111,7 @@ async function handleCreateAuction(interaction: CommandInteraction) {
             await db.insert(users).values({ id: sellerId });
         }
         
-        const endTime = computeEndTime(endTimeStr);
+        const endTime = computeEndTime(endTimeStr, lang);
 
         const [newAuction] = await db.insert(auctions).values({
             sellerId,
@@ -122,17 +124,19 @@ async function handleCreateAuction(interaction: CommandInteraction) {
         }).returning();
 
         await interaction.editReply(
-            `🎉 **Auction Created!** 🎉\n\n` +
-            `**Item:** ${newAuction.title}\n` +
-            `**Starting Price:** ${newAuction.startPrice} sats\n` +
-            `**Ends:** <t:${Math.floor(newAuction.endTime.getTime() / 1000)}:R>\n` +
-            `**Collateral:** ${newAuction.collateralRatio}%\n\n` +
-            `Use \\\`/bid ${newAuction.id} <amount>\\\` to place your bid!`
+            t('auction.create.success', lang, {
+                title: newAuction.title,
+                startPrice: newAuction.startPrice.toString(),
+                endTimestamp: Math.floor(newAuction.endTime.getTime() / 1000).toString(),
+                collateral: newAuction.collateralRatio.toString(),
+                id: newAuction.id.toString(),
+            }),
         );
 
     } catch (error) {
         console.error('Error creating auction:', error);
-        const message = isAppError(error) ? error.message : 'Could not create the auction. Please try again later.';
+        const lang = getInteractionLanguage(interaction);
+        const message = isAppError(error) ? error.message : t('errors.generic', lang);
         await interaction.editReply(message);
     }
 }
@@ -140,42 +144,53 @@ async function handleCreateAuction(interaction: CommandInteraction) {
 async function handleListAuctions(interaction: CommandInteraction) {
     await interaction.deferReply();
     try {
+        const lang = getInteractionLanguage(interaction);
         const status = (interaction.options.getString('status') ?? 'ACTIVE') as 'ACTIVE' | 'ENDED' | 'CANCELLED' | 'ALL';
         const limit = interaction.options.getInteger('limit') ?? 5;
 
         const listings = await auctionService.listAuctions({ status, limit });
         if (listings.length === 0) {
-            await interaction.editReply('No auctions found for the selected filter.');
+            await interaction.editReply(t('auction.list.empty', lang));
             return;
         }
 
         const lines = listings.map(({ auction, topBid }) => {
-            const endLabel = auction.status === 'ACTIVE'
-                ? `Ends <t:${Math.floor(auction.endTime.getTime() / 1000)}:R>`
-                : `Ended <t:${Math.floor(auction.endTime.getTime() / 1000)}:R>`;
+            const endLabel = t(
+                auction.status === 'ACTIVE' ? 'auction.list.end.active' : 'auction.list.end.ended',
+                lang,
+                { timestamp: Math.floor(auction.endTime.getTime() / 1000).toString() },
+            );
 
             const topBidLine = topBid
-                ? `Top Bid: ${topBid.amount} sats by <@${topBid.bidderId}>`
-                : 'No bids yet';
+                ? t('auction.list.topBid', lang, {
+                    amount: topBid.amount.toString(),
+                    bidder: topBid.bidderId,
+                  })
+                : t('auction.list.noBids', lang);
 
-            return (
-                `**#${auction.id} • ${auction.title}**\n` +
-                `Seller: <@${auction.sellerId}> • ${endLabel}\n` +
-                `Current Price: ${auction.currentPrice} sats • Collateral: ${auction.collateralRatio}%\n` +
-                `${topBidLine}`
-            );
+            return t('auction.list.entry', lang, {
+                id: auction.id.toString(),
+                title: auction.title,
+                seller: auction.sellerId,
+                endLabel,
+                price: auction.currentPrice.toString(),
+                collateral: auction.collateralRatio.toString(),
+                topBid: topBidLine,
+            });
         });
 
         await interaction.editReply(lines.join('\n\n'));
     } catch (error) {
         console.error('Error listing auctions:', error);
-        await interaction.editReply('Could not fetch the auction list right now.');
+        const lang = getInteractionLanguage(interaction);
+        await interaction.editReply(t('errors.generic', lang));
     }
 }
 
 async function handleCancelAuction(interaction: CommandInteraction) {
     await interaction.deferReply({ ephemeral: true });
     try {
+        const lang = getInteractionLanguage(interaction);
         const auctionId = interaction.options.getInteger('auction_id', true);
         const userId = interaction.user.id;
 
@@ -186,15 +201,15 @@ async function handleCancelAuction(interaction: CommandInteraction) {
             });
 
             if (!auction) {
-                throw new AppError('Auction not found.', 'AUCTION_NOT_FOUND');
+                throw new AppError(t('bid.error.notFound', lang), 'AUCTION_NOT_FOUND');
             }
 
             if (auction.status !== 'ACTIVE') {
-                throw new AppError('Only active auctions can be cancelled.', 'AUCTION_INACTIVE');
+                throw new AppError(t('auction.cancel.inactive', lang), 'AUCTION_INACTIVE');
             }
 
             if (!canManageAuction(userId, auction.sellerId)) {
-                throw new AppError('You do not have permission to cancel this auction.', 'VALIDATION');
+                throw new AppError(t('auction.cancel.noPermission', lang), 'VALIDATION');
             }
 
             const topBid = await tx.query.bids.findFirst({
@@ -227,16 +242,20 @@ async function handleCancelAuction(interaction: CommandInteraction) {
         });
 
         await interaction.editReply(
-            `🛑 Auction #${result.auction.id} (${result.auction.title}) has been cancelled.`
+            t('auction.cancel.success', lang, {
+                id: result.auction.id.toString(),
+                title: result.auction.title,
+            }),
         );
     } catch (error) {
         console.error('Error cancelling auction:', error);
-        const message = isAppError(error) ? error.message : 'Could not cancel the auction right now.';
+        const lang = getInteractionLanguage(interaction);
+        const message = isAppError(error) ? error.message : t('errors.generic', lang);
         await interaction.editReply(message);
     }
 }
 
-function computeEndTime(input: string | null): Date {
+function computeEndTime(input: string | null, lang: string): Date {
     const fallback = moment().add(24, 'hours').toDate();
     if (!input) {
         return fallback;
@@ -245,19 +264,19 @@ function computeEndTime(input: string | null): Date {
     const trimmed = input.trim();
     const match = trimmed.match(/^(\d+)\s*(s|m|h|d|w)$/i);
     if (!match) {
-        throw new AppError('Invalid end time format. Use numbers followed by s/m/h/d/w, e.g. "30m" or "3d".', 'VALIDATION');
+        throw new AppError(t('errors.invalidEndTime', lang as any), 'VALIDATION');
     }
 
     const value = Number(match[1]);
     if (!Number.isFinite(value) || value <= 0) {
-        throw new AppError('End time must be greater than zero.', 'VALIDATION');
+        throw new AppError(t('errors.invalidEndTime', lang as any), 'VALIDATION');
     }
 
     const unit = match[2].toLowerCase();
     const duration = moment.duration(value, unit as moment.unitOfTime.DurationConstructor);
     const milliseconds = duration.asMilliseconds();
     if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
-        throw new AppError('Invalid end time duration.', 'VALIDATION');
+        throw new AppError(t('errors.invalidEndTime', lang as any), 'VALIDATION');
     }
 
     return moment().add(duration).toDate();

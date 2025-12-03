@@ -2,6 +2,7 @@ import { SlashCommandBuilder, CommandInteraction } from 'discord.js';
 import { db } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { getInteractionLanguage, t } from '../utils/i18n';
 
 export const data = new SlashCommandBuilder()
     .setName('balance')
@@ -9,6 +10,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction: CommandInteraction) {
     await interaction.deferReply({ ephemeral: true });
+    const lang = getInteractionLanguage(interaction);
     
     const userId = interaction.user.id;
 
@@ -28,14 +30,14 @@ export async function execute(interaction: CommandInteraction) {
         const totalBalance = balance + lockedBalance;
         
         await interaction.editReply(
-            `Your Balance:\n` +
-            `----------------\n` +
-            `**Available:** ${balance.toString()} sats\n` +
-            `**Locked in Bids:** ${lockedBalance.toString()} sats\n` +
-            `**Total:** ${totalBalance.toString()} sats`
+            t('balance.display', lang, {
+                available: balance.toString(),
+                locked: lockedBalance.toString(),
+                total: totalBalance.toString(),
+            }),
         );
     } catch (error) {
         console.error('Error fetching balance:', error);
-        await interaction.editReply('Could not fetch your balance at this time.');
+        await interaction.editReply(t('errors.generic', lang));
     }
 }

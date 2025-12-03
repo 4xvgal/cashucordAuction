@@ -3,6 +3,7 @@ import { db } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { isRootAdmin } from '../utils/permissions';
+import { getInteractionLanguage, t } from '../utils/i18n';
 
 export const data = new SlashCommandBuilder()
     .setName('admin')
@@ -20,9 +21,10 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction: CommandInteraction) {
     if (!interaction.isChatInputCommand()) return;
+    const lang = getInteractionLanguage(interaction);
 
     if (!isRootAdmin(interaction.user.id)) {
-        await interaction.reply({ content: 'You do not have permission to use admin commands.', ephemeral: true });
+        await interaction.reply({ content: t('auction.cancel.noPermission', lang), ephemeral: true });
         return;
     }
 
@@ -35,6 +37,7 @@ export async function execute(interaction: CommandInteraction) {
 
 async function handleBalanceLookup(interaction: CommandInteraction) {
     await interaction.deferReply({ ephemeral: true });
+    const lang = getInteractionLanguage(interaction);
     const targetUser = interaction.options.getUser('user', true);
 
     const userRecord = await db.query.users.findFirst({
@@ -42,7 +45,7 @@ async function handleBalanceLookup(interaction: CommandInteraction) {
     });
 
     if (!userRecord) {
-        await interaction.editReply(`User <@${targetUser.id}> does not have a wallet record yet.`);
+        await interaction.editReply(t('admin.balance.missing', lang, { userId: targetUser.id }));
         return;
     }
 
@@ -51,9 +54,11 @@ async function handleBalanceLookup(interaction: CommandInteraction) {
     const total = balance + lockedBalance;
 
     await interaction.editReply(
-        `**User:** <@${targetUser.id}>\n` +
-        `**Available:** ${balance} sats\n` +
-        `**Locked:** ${lockedBalance} sats\n` +
-        `**Total:** ${total} sats`
+        t('admin.balance.result', lang, {
+            userId: targetUser.id,
+            available: balance.toString(),
+            locked: lockedBalance.toString(),
+            total: total.toString(),
+        }),
     );
 }

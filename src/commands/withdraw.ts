@@ -2,6 +2,7 @@ import { SlashCommandBuilder, CommandInteraction } from 'discord.js';
 import { walletService } from '../services/WalletService';
 import { getDecodedToken } from '@cashu/cashu-ts';
 import { isAppError } from '../utils/errors';
+import { getInteractionLanguage, t } from '../utils/i18n';
 
 export const data = new SlashCommandBuilder()
     .setName('withdraw')
@@ -33,6 +34,7 @@ export async function execute(interaction: CommandInteraction) {
 
     const subcommand = interaction.options.getSubcommand();
     await interaction.deferReply({ ephemeral: true });
+    const lang = getInteractionLanguage(interaction);
 
     if (subcommand === 'token') {
         const amount = interaction.options.getInteger('amount', true);
@@ -40,18 +42,15 @@ export async function execute(interaction: CommandInteraction) {
             const { token, finalAmount } = await walletService.createWithdrawalToken(interaction.user.id, amount);
             
             await interaction.user.send({
-                content: `Here is your Cashu token for ${finalAmount} sats:\n\
-\
-${token}\
-\
-`
+                content: t('withdraw.token.dm', lang, { amount: finalAmount.toString(), token }),
             });
 
-            await interaction.editReply(`✅ Withdrawal successful! I have sent you a DM with the Cashu token for ${finalAmount} sats.`);
+            await interaction.editReply(t('withdraw.token.success', lang, { amount: finalAmount.toString() }));
 
         } catch (error: any) {
             console.error('Error creating withdrawal token:', error);
-            const message = isAppError(error) ? error.message : `Could not process your withdrawal. **Error:** ${error.message}`;
+            const fallback = t('withdraw.token.failure', lang, { error: error.message });
+            const message = isAppError(error) ? error.message : fallback;
             await interaction.editReply(message);
         }
     } else if (subcommand === 'invoice') {
@@ -59,7 +58,7 @@ ${token}\
         try {
             const { amount } = getDecodedToken(invoice);
             if (!amount) {
-                await interaction.editReply('Invalid invoice. Could not decode amount.');
+                await interaction.editReply(t('withdraw.invoice.invalid', lang));
                 return;
             }
 
@@ -67,19 +66,15 @@ ${token}\
 
             if (isPaid) {
                 await interaction.user.send(
-                    `✅ Invoice for ${amount} sats paid successfully!\
-` +
-                    `**Preimage:** 
-${preimage}
-`
+                    t('withdraw.invoice.dm', lang, { amount: amount.toString(), preimage: preimage ?? '' }),
                 );
-                await interaction.editReply('Invoice paid! I have sent you a confirmation via DM.');
+                await interaction.editReply(t('withdraw.invoice.success', lang));
             } else {
-                await interaction.editReply('Failed to pay the invoice. The funds have been returned to your balance.');
+                await interaction.editReply(t('withdraw.invoice.failure', lang));
             }
         } catch (error: any) {
             console.error('Error paying Lightning invoice:', error);
-            const message = isAppError(error) ? error.message : `Could not process your withdrawal. **Error:** ${error.message}`;
+            const message = isAppError(error) ? error.message : t('errors.generic', lang);
             await interaction.editReply(message);
         }
     }

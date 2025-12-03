@@ -10,7 +10,7 @@ Discord auction house powered by Cashu ecash. Users can deposit, bid with collat
    bun install
    ```
 
-2. Copy `.env` and set the required credentials (Discord bot, DB, Cashu mint, encryption key). Configure `BOT_ADMIN_IDS` with a comma-separated list of Discord user IDs that should act as mint/auction admins. For local development, `DATABASE_URL` points at `localhost:5432`; Docker Compose uses `DOCKER_DATABASE_URL` so the bot can reach the `postgres` service. The default `MINT_URL` talks to `localhost:3338` while `MINT_URL_INTERNAL` is used by the bot container to reach the `mint` service. The defaults can also target the public test mints:
+2. Copy `.env` and set the required credentials (Discord bot, DB, Cashu mint, encryption key). Configure `BOT_ADMIN_IDS` with a comma-separated list of Discord user IDs that should act as mint/auction admins. `BOT_DEFAULT_LANGUAGE` controls the default response language (`en` or `ko`). For local development, `DATABASE_URL` points at `localhost:5432`; Docker Compose uses `DOCKER_DATABASE_URL` so the bot can reach the `postgres` service. The default `MINT_URL` talks to `localhost:3338` while `MINT_URL_INTERNAL` is used by the bot container to reach the `mint` service. The defaults can also target the public test mints:
 
    - `https://testnut.cashu.space` (includes fees)
    - `https://nofees.testnut.cashu.space` (no fees, great for local testing)
@@ -46,6 +46,7 @@ The default `.env` already points `MINT_URL` and `LOCAL_MINT_URL` to `http://loc
 - `/deposit` & `/withdraw` – Lightning invoice or Cashu token flows, including swap-based token redemption (everyone).
 - `/balance` – view your own balance (everyone).
 - `/admin balance` – inspect a user’s balance; restricted to root admins (IDs listed in `BOT_ADMIN_IDS`).
+- `/help <language?>` – show usage guidance in English or Korean (`/help ko`), defaulting to `BOT_DEFAULT_LANGUAGE`.
 
 **Permission model**
 

@@ -4,6 +4,7 @@ import { auctions, users, bids } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import moment from 'moment';
 import { AppError, isAppError } from '../utils/errors';
+import { getInteractionLanguage, t } from '../utils/i18n';
 
 export const data = new SlashCommandBuilder()
     .setName('bid')
@@ -28,6 +29,7 @@ export async function execute(interaction: CommandInteraction) {
     const bidderId = interaction.user.id;
 
     await interaction.deferReply();
+    const lang = getInteractionLanguage(interaction);
 
     try {
         const result = await db.transaction(async (tx) => {
@@ -37,11 +39,11 @@ export async function execute(interaction: CommandInteraction) {
                 for: 'update',
             });
 
-            if (!auction) { throw new AppError('Auction not found.', 'AUCTION_NOT_FOUND'); }
-            if (auction.status !== 'ACTIVE') { throw new AppError('This auction is not active.', 'AUCTION_INACTIVE'); }
-            if (moment().isAfter(auction.endTime)) { throw new AppError('This auction has already ended.', 'AUCTION_ENDED'); }
-            if (bidAmount <= auction.currentPrice) { throw new AppError(`Your bid must be higher than the current price of ${auction.currentPrice} sats.`); }
-            if (auction.sellerId === bidderId) { throw new AppError('You cannot bid on your own auction.'); }
+            if (!auction) { throw new AppError(t('bid.error.notFound', lang), 'AUCTION_NOT_FOUND'); }
+            if (auction.status !== 'ACTIVE') { throw new AppError(t('bid.error.inactive', lang), 'AUCTION_INACTIVE'); }
+            if (moment().isAfter(auction.endTime)) { throw new AppError(t('bid.error.ended', lang), 'AUCTION_ENDED'); }
+            if (bidAmount <= auction.currentPrice) { throw new AppError(t('bid.error.lowAmount', lang, { price: auction.currentPrice.toString() })); }
+            if (auction.sellerId === bidderId) { throw new AppError(t('bid.error.selfBid', lang)); }
 
             // 2. Get bidder and lock them
             const bidder = await tx.query.users.findFirst({
@@ -57,7 +59,7 @@ export async function execute(interaction: CommandInteraction) {
             const availableBalance = bidderBalance - bidderLockedBalance;
 
             if (availableBalance < requiredCollateral) {
-                throw new AppError(`Insufficient collateral. You need at least ${requiredCollateral} sats available (Balance - Locked) to place this bid.`, 'INSUFFICIENT_FUNDS');
+                throw new AppError(t('bid.error.collateral', lang, { required: requiredCollateral.toString() }), 'INSUFFICIENT_FUNDS');
             }
 
             // 4. Find previous top bidder to release their collateral
@@ -113,17 +115,23 @@ export async function execute(interaction: CommandInteraction) {
         }, { isolationLevel: 'serializable' });
 
 
+        const endNote = result.newEndTime !== result.auction.endTime
+            ? t('bid.endNote.extended', lang, { timestamp: Math.floor(result.newEndTime.getTime() / 1000).toString() })
+            : t('bid.endNote.normal', lang, { timestamp: Math.floor(result.newEndTime.getTime() / 1000).toString() });
+
         await interaction.editReply(
-            `🚀 **New Highest Bid!**\n\n` +
-            `**Auction:** ${result.auction.title} (#${result.auction.id})\n` +
-            `**New Price:** ${bidAmount} sats\n` +
-            `**Bidder:** <@${bidderId}>\n\n` +
-            (result.newEndTime !== result.auction.endTime ? `**ANTI-SNIPE!** Auction extended! New end time: <t:${Math.floor(result.newEndTime.getTime() / 1000)}:R>` : `**Ends:** <t:${Math.floor(result.newEndTime.getTime() / 1000)}:R>`)
+            t('bid.success', lang, {
+                title: result.auction.title,
+                id: result.auction.id.toString(),
+                amount: bidAmount.toString(),
+                bidder: bidderId,
+                endNote,
+            }),
         );
 
     } catch (error: any) {
         console.error('Error placing bid:', error);
-        const message = isAppError(error) ? error.message : `Could not place your bid. **Error:** ${error.message}`;
+        const message = isAppError(error) ? error.message : t('errors.generic', lang);
         await interaction.editReply(message);
     }
 }
