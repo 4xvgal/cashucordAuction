@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  mint:
+    image: cashubtc/nutshell:0.18.2
+    container_name: cashu-mint
+    environment:
+      MINT_BACKEND_BOLT11_SAT: ${MINT_BACKEND_BOLT11_SAT:-FakeWallet}
+      MINT_PRIVATE_KEY: ${MINT_PRIVATE_KEY:-TEST_PRIVATE_KEY}
+      MINT_LISTEN_HOST: ${MINT_LISTEN_HOST:-0.0.0.0}
+      MINT_LISTEN_PORT: ${MINT_LISTEN_PORT:-3338}
+      MINT_LIGHTNING: ${MINT_LIGHTNING:-FakeWallet}
+    ports:
+      - '3338:3338'
+    command: poetry run mint
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python3',
+          '-c',
+          'import urllib.request; urllib.request.urlopen("http://localhost:3338/v1/info")',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cashucord}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cashucord}
+      POSTGRES_DB: ${POSTGRES_DB:-cashucord}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cashucord']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build: .
+    depends_on:
+      mint:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://cashucord:cashucord@postgres:5432/cashucord}
+      AUCTION_FINALIZER_INTERVAL_MS: ${AUCTION_FINALIZER_INTERVAL_MS:-15000}
+      MINT_URL: ${MINT_URL_INTERNAL:-http://mint:3338}
+    command: bun start
+
+volumes:
+  postgres_data:

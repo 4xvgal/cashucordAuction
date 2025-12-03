@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, CommandInteraction, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType } from 'discord.js';
 import { walletService } from '../services/WalletService';
+import { isAppError } from '../utils/errors';
 
 export const data = new SlashCommandBuilder()
     .setName('deposit')
@@ -86,7 +87,8 @@ async function handleInvoiceDeposit(interaction: CommandInteraction) {
 
     } catch (error) {
         console.error('Error creating deposit invoice:', error);
-        await interaction.editReply({ content: 'Could not create a deposit invoice at this time.', components: [] });
+        const message = isAppError(error) ? error.message : 'Could not create a deposit invoice at this time.';
+        await interaction.editReply({ content: message, components: [] });
     }
 }
 
@@ -100,6 +102,7 @@ async function handleTokenDeposit(interaction: CommandInteraction) {
         await interaction.editReply(`✅ Deposit successful! Redeemed a token for ${amount} sats.`);
     } catch (error) {
         console.error('Error redeeming token:', error);
-        await interaction.editReply('Could not redeem the provided token. It might be invalid, expired, or already spent.');
+        const message = isAppError(error) ? error.message : 'Could not redeem the provided token. It might be invalid, expired, or already spent.';
+        await interaction.editReply(message);
     }
 }

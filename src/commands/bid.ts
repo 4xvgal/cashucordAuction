@@ -1,8 +1,9 @@
 import { SlashCommandBuilder, CommandInteraction } from 'discord.js';
 import { db } from '../db';
 import { auctions, users, bids } from '../db/schema';
-import { eq, and, desc, gt } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import moment from 'moment';
+import { AppError, isAppError } from '../utils/errors';
 
 export const data = new SlashCommandBuilder()
     .setName('bid')
@@ -36,10 +37,11 @@ export async function execute(interaction: CommandInteraction) {
                 for: 'update',
             });
 
-            if (!auction) { throw new Error('Auction not found.'); }
-            if (auction.status !== 'ACTIVE') { throw new Error('This auction is not active.'); }
-            if (bidAmount <= auction.currentPrice) { throw new Error(`Your bid must be higher than the current price of ${auction.currentPrice} sats.`); }
-            if (auction.sellerId === bidderId) { throw new Error('You cannot bid on your own auction.'); }
+            if (!auction) { throw new AppError('Auction not found.', 'AUCTION_NOT_FOUND'); }
+            if (auction.status !== 'ACTIVE') { throw new AppError('This auction is not active.', 'AUCTION_INACTIVE'); }
+            if (moment().isAfter(auction.endTime)) { throw new AppError('This auction has already ended.', 'AUCTION_ENDED'); }
+            if (bidAmount <= auction.currentPrice) { throw new AppError(`Your bid must be higher than the current price of ${auction.currentPrice} sats.`); }
+            if (auction.sellerId === bidderId) { throw new AppError('You cannot bid on your own auction.'); }
 
             // 2. Get bidder and lock them
             const bidder = await tx.query.users.findFirst({
@@ -55,7 +57,7 @@ export async function execute(interaction: CommandInteraction) {
             const availableBalance = bidderBalance - bidderLockedBalance;
 
             if (availableBalance < requiredCollateral) {
-                throw new Error(`Insufficient collateral. You need at least ${requiredCollateral} sats available (Balance - Locked) to place this bid.`);
+                throw new AppError(`Insufficient collateral. You need at least ${requiredCollateral} sats available (Balance - Locked) to place this bid.`, 'INSUFFICIENT_FUNDS');
             }
 
             // 4. Find previous top bidder to release their collateral
@@ -121,6 +123,7 @@ export async function execute(interaction: CommandInteraction) {
 
     } catch (error: any) {
         console.error('Error placing bid:', error);
-        await interaction.editReply(`Could not place your bid. **Error:** ${error.message}`);
+        const message = isAppError(error) ? error.message : `Could not place your bid. **Error:** ${error.message}`;
+        await interaction.editReply(message);
     }
 }

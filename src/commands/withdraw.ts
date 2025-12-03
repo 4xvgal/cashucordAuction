@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, CommandInteraction } from 'discord.js';
 import { walletService } from '../services/WalletService';
 import { getDecodedToken } from '@cashu/cashu-ts';
+import { isAppError } from '../utils/errors';
 
 export const data = new SlashCommandBuilder()
     .setName('withdraw')
@@ -50,7 +51,8 @@ ${token}\
 
         } catch (error: any) {
             console.error('Error creating withdrawal token:', error);
-            await interaction.editReply(`Could not process your withdrawal. **Error:** ${error.message}`);
+            const message = isAppError(error) ? error.message : `Could not process your withdrawal. **Error:** ${error.message}`;
+            await interaction.editReply(message);
         }
     } else if (subcommand === 'invoice') {
         const invoice = interaction.options.getString('invoice', true);
@@ -77,7 +79,8 @@ ${preimage}
             }
         } catch (error: any) {
             console.error('Error paying Lightning invoice:', error);
-            await interaction.editReply(`Could not process your withdrawal. **Error:** ${error.message}`);
+            const message = isAppError(error) ? error.message : `Could not process your withdrawal. **Error:** ${error.message}`;
+            await interaction.editReply(message);
         }
     }
 }
