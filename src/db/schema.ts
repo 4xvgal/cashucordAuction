@@ -52,6 +52,8 @@ export const auctions = pgTable('auctions', {
   status: auctionStatusEnum('status').notNull().default('ACTIVE'),
   antiSnipeTrigger: integer('anti_snipe_trigger').notNull().default(60), // 60 seconds
   antiSnipeExtension: integer('anti_snipe_extension').notNull().default(60), // 60 seconds
+  isPrivacyMode: boolean('is_privacy_mode').notNull().default(false),
+  winnerId: text('winner_id').references(() => users.id),
 });
 
 export const auctionsRelations = relations(auctions, ({ one, many }) => ({
@@ -70,6 +72,8 @@ export const bids = pgTable('bids', {
   bidderId: text('bidder_id').notNull().references(() => users.id),
   amount: bigint('amount', { mode: 'bigint' }).notNull(),
   timestamp: timestamp('timestamp').defaultNow().notNull(),
+  isAnonymous: boolean('is_anonymous').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 export const bidsRelations = relations(bids, ({ one }) => ({

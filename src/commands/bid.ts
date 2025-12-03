@@ -5,6 +5,8 @@ import { eq, desc } from 'drizzle-orm';
 import moment from 'moment';
 import { AppError, isAppError } from '../utils/errors';
 import { getInteractionLanguage, t } from '../utils/i18n';
+import { buildPublicBidMessage } from '../utils/privacy';
+import { getInteractionLanguage, t } from '../utils/i18n';
 
 export const data = new SlashCommandBuilder()
     .setName('bid')
@@ -96,6 +98,7 @@ export async function execute(interaction: CommandInteraction) {
                 auctionId: auctionId,
                 bidderId: bidderId,
                 amount: bidAmount,
+                isAnonymous: auction.isPrivacyMode,
             });
 
             // 7. Anti-Snipe Logic
@@ -115,19 +118,23 @@ export async function execute(interaction: CommandInteraction) {
         }, { isolationLevel: 'serializable' });
 
 
-        const endNote = result.newEndTime !== result.auction.endTime
-            ? t('bid.endNote.extended', lang, { timestamp: Math.floor(result.newEndTime.getTime() / 1000).toString() })
-            : t('bid.endNote.normal', lang, { timestamp: Math.floor(result.newEndTime.getTime() / 1000).toString() });
-
         await interaction.editReply(
-            t('bid.success', lang, {
-                title: result.auction.title,
-                id: result.auction.id.toString(),
-                amount: bidAmount.toString(),
-                bidder: bidderId,
-                endNote,
-            }),
+            buildPublicBidMessage(
+                result.auction,
+                {
+                    title: result.auction.title,
+                    id: result.auction.id,
+                    amount: bidAmount,
+                    bidderId,
+                    endTime: result.newEndTime,
+                },
+                lang,
+            ),
         );
+
+        if (result.auction.isPrivacyMode) {
+            await interaction.followUp({ content: t('bid.privacyNotice', lang), ephemeral: true });
+        }
 
     } catch (error: any) {
         console.error('Error placing bid:', error);

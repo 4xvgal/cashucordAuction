@@ -10,7 +10,11 @@ Discord auction house powered by Cashu ecash. Users can deposit, bid with collat
    bun install
    ```
 
-2. Copy `.env` and set the required credentials (Discord bot, DB, Cashu mint, encryption key). Configure `BOT_ADMIN_IDS` with a comma-separated list of Discord user IDs that should act as mint/auction admins. `BOT_DEFAULT_LANGUAGE` controls the default response language (`en` or `ko`). For local development, `DATABASE_URL` points at `localhost:5432`; Docker Compose uses `DOCKER_DATABASE_URL` so the bot can reach the `postgres` service. The default `MINT_URL` talks to `localhost:3338` while `MINT_URL_INTERNAL` is used by the bot container to reach the `mint` service. The defaults can also target the public test mints:
+2. Copy `.env` and set the required credentials (Discord bot, DB, Cashu mint, encryption key). Configure `BOT_ADMIN_IDS` with a comma-separated list of Discord user IDs that should act as mint/auction admins. `BOT_DEFAULT_LANGUAGE` controls the default response language (`en` or `ko`). Optional channels:
+   - `AUCTION_RESULTS_CHANNEL_ID` – where final auction summaries are posted.
+   - `AUDIT_LOG_CHANNEL_ID` – private log channel that receives the real winner when privacy mode is on.
+
+   For local development, `DATABASE_URL` points at `localhost:5432`; Docker Compose uses `DOCKER_DATABASE_URL` so the bot can reach the `postgres` service. The default `MINT_URL` talks to `localhost:3338` while `MINT_URL_INTERNAL` is used by the bot container to reach the `mint` service. The defaults can also target the public test mints:
 
    - `https://testnut.cashu.space` (includes fees)
    - `https://nofees.testnut.cashu.space` (no fees, great for local testing)
@@ -39,7 +43,7 @@ The default `.env` already points `MINT_URL` and `LOCAL_MINT_URL` to `http://loc
 
 ### Slash Commands & Permissions
 
-- `/auction create` – create new auctions with collateral ratios and custom durations (seller-level).
+- `/auction create` – create new auctions with collateral ratios, custom durations, and the optional privacy toggle (seller-level).
 - `/auction list` – browse active/ended/cancelled auctions with live bid data (everyone).
 - `/auction cancel` – cancel an active auction (seller of that auction or a root admin).
 - `/bid` – place bids with automatic collateral locking, anti-snipe extensions, and better error feedback (everyone).
@@ -53,6 +57,12 @@ The default `.env` already points `MINT_URL` and `LOCAL_MINT_URL` to `http://loc
 - Root admins (from `BOT_ADMIN_IDS`) can cancel any auction and use `/admin` tools to inspect user balances.
 - Sellers (users who created auctions) can cancel only their own auctions.
 - Regular bidders can place bids, deposit, withdraw, and check their own balances but cannot manage auctions created by others.
+
+### Privacy auctions
+
+- Enable the privacy toggle when running `/auction create`. All public bid updates and the final public summary will hide bidder identities (aliases like *Bidder #1234* are shown instead).
+- Sellers and winners receive private DMs revealing the counterparties. Audit staff can review the real winner in the `AUDIT_LOG_CHANNEL_ID`.
+- Bidders are reminded via an ephemeral notice that their bid was recorded anonymously.
 
 ### Tests
 

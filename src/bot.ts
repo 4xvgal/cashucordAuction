@@ -105,6 +105,7 @@ client.on('interactionCreate', async interaction => {
     const commandsJson = await loadCommands();
     await registerSlashCommands(commandsJson);
     const finalizerInterval = Number(process.env.AUCTION_FINALIZER_INTERVAL_MS ?? '15000');
-    auctionService.startFinalizer(finalizerInterval);
+    auctionService.attachClient(client);
+    auctionService.startFinalizer(finalizerInterval, client);
     await client.login(process.env.DISCORD_TOKEN);
 })();

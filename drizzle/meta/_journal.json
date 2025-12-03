@@ -8,6 +8,13 @@
       "when": 1764723107005,
       "tag": "0000_thankful_eddie_brock",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1764725682806,
+      "tag": "0001_salty_mandrill",
+      "breakpoints": true
     }
   ]
 }

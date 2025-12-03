@@ -8,6 +8,7 @@ import { AppError, isAppError } from '../utils/errors';
 import '../utils/env';
 import { canManageAuction } from '../utils/permissions';
 import { getInteractionLanguage, t } from '../utils/i18n';
+import { formatBidderDisplay } from '../utils/privacy';
 
 const resolveDefaultCollateralRatio = () => {
     const raw = process.env.DEFAULT_COLLATERAL_RATIO ?? '20';
@@ -45,6 +46,10 @@ export const data = new SlashCommandBuilder()
                     .setMinValue(1)
                     .setMaxValue(100)
                     .setRequired(false)
+            )
+            .addBooleanOption(option =>
+                option.setName('privacy_mode')
+                    .setDescription('Enable anonymous bidding for this auction.')
             )
     )
     .addSubcommand(subcommand =>
@@ -102,6 +107,7 @@ async function handleCreateAuction(interaction: CommandInteraction) {
         const endTimeStr = interaction.options.getString('end_time') ?? '24h';
         const defaultCollateralRatio = resolveDefaultCollateralRatio();
         const collateralRatio = interaction.options.getInteger('collateral_ratio') ?? defaultCollateralRatio;
+        const isPrivacyMode = interaction.options.getBoolean('privacy_mode') ?? false;
 
         const sellerId = interaction.user.id;
 
@@ -121,6 +127,7 @@ async function handleCreateAuction(interaction: CommandInteraction) {
             collateralRatio,
             endTime,
             status: 'ACTIVE',
+            isPrivacyMode,
         }).returning();
 
         await interaction.editReply(
@@ -164,7 +171,7 @@ async function handleListAuctions(interaction: CommandInteraction) {
             const topBidLine = topBid
                 ? t('auction.list.topBid', lang, {
                     amount: topBid.amount.toString(),
-                    bidder: topBid.bidderId,
+                    bidder: formatBidderDisplay(auction, topBid.bidderId),
                   })
                 : t('auction.list.noBids', lang);
 

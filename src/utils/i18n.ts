@@ -90,14 +90,18 @@ export const translations = {
       '🚀 **New Highest Bid!**\n\n' +
       '**Auction:** {title} (#{id})\n' +
       '**New Price:** {amount} sats\n' +
-      '**Bidder:** <@{bidder}>\n\n' +
+      '**Bidder:** {bidderDisplay}\n\n' +
       '{endNote}',
     ko:
       '🚀 **최고 입찰가 갱신!**\n\n' +
       '**경매:** {title} (#{id})\n' +
       '**새 금액:** {amount} 사토시\n' +
-      '**입찰자:** <@{bidder}>\n\n' +
+      '**입찰자:** {bidderDisplay}\n\n' +
       '{endNote}',
+  },
+  'bid.privacyNotice': {
+    en: 'Your bid has been recorded anonymously. Good luck!',
+    ko: '입찰이 익명으로 기록되었습니다. 행운을 빕니다!',
   },
   'bid.endNote.extended': {
     en: '**ANTI-SNIPE!** Auction extended! New end time: <t:{timestamp}:R>',
@@ -142,6 +146,26 @@ export const translations = {
       '**사용 가능:** {available} 사토시\n' +
       '**입찰 잠금:** {locked} 사토시\n' +
       '**총합:** {total} 사토시',
+  },
+  'auction.result.privacy': {
+    en: 'Auction ended. Sold to an anonymous buyer for {amount} sats.',
+    ko: '경매가 종료되었습니다. 익명의 구매자에게 {amount} 사토시에 판매되었습니다.',
+  },
+  'auction.result.public': {
+    en: 'Auction ended. Sold to {winner} for {amount} sats.',
+    ko: '경매가 종료되었습니다. {winner} 님이 {amount} 사토시에 낙찰되었습니다.',
+  },
+  'auction.result.noBids': {
+    en: 'Auction ended without any bids.',
+    ko: '입찰 없이 경매가 종료되었습니다.',
+  },
+  'auction.dm.seller': {
+    en: '✅ Your auction "{title}" sold to {winner} for {amount} sats.',
+    ko: '✅ "{title}" 경매가 {winner} 님에게 {amount} 사토시에 판매되었습니다.',
+  },
+  'auction.dm.winner': {
+    en: '🎉 You won the auction "{title}" anonymously for {amount} sats!',
+    ko: '🎉 "{title}" 경매를 익명으로 {amount} 사토시에 낙찰 받았습니다!',
   },
   'admin.balance.missing': {
     en: 'User <@{userId}> does not have a wallet record yet.',

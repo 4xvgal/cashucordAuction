@@ -1,5 +1,6 @@
 import moment from 'moment';
 import { and, asc, desc, eq, inArray, lte } from 'drizzle-orm';
+import { Client } from 'discord.js';
 import { db } from '../db';
 import { auctions, bids, users } from '../db/schema';
 import { AppError } from '../utils/errors';
@@ -8,6 +9,8 @@ import {
   BidEvaluationResult,
   evaluateBidsForSettlement,
 } from './auctionSettlement';
+import { buildAuditLogMessage, buildPublicResultMessage, buildSellerDM, buildWinnerDM } from '../utils/privacy';
+import { getDefaultLanguage } from '../utils/i18n';
 
 type AuctionRecord = typeof auctions.$inferSelect;
 type BidRecord = typeof bids.$inferSelect;
@@ -20,14 +23,31 @@ export type AuctionListItem = {
   topBid?: BidRecord;
 };
 
+type FinalizedAuctionResult = {
+  status: 'ENDED';
+  auction: AuctionRecord;
+  winnerId: string;
+  bidAmount: bigint;
+};
+
 export class AuctionService {
   private finalizerHandle: ReturnType<typeof setInterval> | undefined;
   private finalizerRunning = false;
   private missingSchemaNotified = false;
+  private client?: Client;
+  private readonly announceChannelId = process.env.AUCTION_RESULTS_CHANNEL_ID;
+  private readonly auditChannelId = process.env.AUDIT_LOG_CHANNEL_ID;
 
   constructor(private readonly database = db) {}
 
-  startFinalizer(intervalMs = 15_000) {
+  attachClient(client: Client) {
+    this.client = client;
+  }
+
+  startFinalizer(intervalMs = 15_000, client?: Client) {
+    if (client) {
+      this.client = client;
+    }
     if (this.finalizerHandle) {
       return;
     }
@@ -36,7 +56,12 @@ export class AuctionService {
       if (this.finalizerRunning) return;
       this.finalizerRunning = true;
       try {
-        await this.finalizeExpiredAuctions();
+        const results = await this.finalizeExpiredAuctions();
+        for (const result of results) {
+          if (result && result.status === 'ENDED') {
+            await this.handleConclusion(result as FinalizedAuctionResult);
+          }
+        }
       } catch (error) {
         console.error('Auction finalizer error:', error);
       } finally {
@@ -164,20 +189,27 @@ export class AuctionService {
         .set({ balance: sellerBalance + winnerState.bid.amount })
         .where(eq(users.id, auction.sellerId));
 
+      const updatedAuction: AuctionRecord = {
+        ...auction,
+        status: 'ENDED',
+        currentPrice: winnerState.bid.amount,
+        winnerId: winnerState.userId,
+      };
+
       await tx
         .update(auctions)
         .set({
           status: 'ENDED',
           currentPrice: winnerState.bid.amount,
+          winnerId: winnerState.userId,
         })
         .where(eq(auctions.id, auction.id));
 
       return {
-        status: 'ENDED',
-        auctionId,
+        status: 'ENDED' as const,
+        auction: updatedAuction,
         winnerId: winnerState.userId,
         bidAmount: winnerState.bid.amount,
-        disqualified: evaluation.disqualified.map((entry) => entry.userId),
       };
     }, { isolationLevel: 'serializable' });
   }
@@ -220,6 +252,48 @@ export class AuctionService {
     }
 
     return items;
+  }
+
+  private async handleConclusion(result: FinalizedAuctionResult) {
+    if (!this.client) return;
+    const lang = getDefaultLanguage();
+    const publicMessage = buildPublicResultMessage(result.auction, { amount: result.bidAmount, winnerId: result.winnerId }, lang);
+
+    if (this.announceChannelId) {
+      try {
+        const channel = await this.client.channels.fetch(this.announceChannelId);
+        if (channel && channel.isTextBased()) {
+          await channel.send(publicMessage);
+        }
+      } catch (error) {
+        console.error('Failed to send auction announcement:', error);
+      }
+    }
+
+    try {
+      const sellerUser = await this.client.users.fetch(result.auction.sellerId);
+      await sellerUser.send(buildSellerDM(result.auction, { amount: result.bidAmount, winnerId: result.winnerId }, lang));
+    } catch (error) {
+      console.error('Failed to DM seller about auction result:', error);
+    }
+
+    try {
+      const winnerUser = await this.client.users.fetch(result.winnerId);
+      await winnerUser.send(buildWinnerDM(result.auction, { amount: result.bidAmount }, lang));
+    } catch (error) {
+      console.error('Failed to DM winner about auction result:', error);
+    }
+
+    if (this.auditChannelId) {
+      try {
+        const channel = await this.client.channels.fetch(this.auditChannelId);
+        if (channel && channel.isTextBased()) {
+          await channel.send(buildAuditLogMessage(result.auction, { amount: result.bidAmount, winnerId: result.winnerId }));
+        }
+      } catch (error) {
+        console.error('Failed to write to audit log channel:', error);
+      }
+    }
   }
 
   private isMissingRelationError(error: unknown) {
