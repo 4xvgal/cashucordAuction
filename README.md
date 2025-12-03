@@ -14,10 +14,7 @@ Discord auction house powered by Cashu ecash. Users can deposit, bid with collat
    - `AUCTION_RESULTS_CHANNEL_ID` – where final auction summaries are posted.
    - `AUDIT_LOG_CHANNEL_ID` – private log channel that receives the real winner when privacy mode is on.
 
-   For local development, `DATABASE_URL` points at `localhost:5432`; Docker Compose uses `DOCKER_DATABASE_URL` so the bot can reach the `postgres` service. The default `MINT_URL` talks to `localhost:3338` while `MINT_URL_INTERNAL` is used by the bot container to reach the `mint` service. The defaults can also target the public test mints:
-
-   - `https://testnut.cashu.space` (includes fees)
-   - `https://nofees.testnut.cashu.space` (no fees, great for local testing)
+   For local development, `DATABASE_URL` points at `localhost:5432`; Docker Compose uses `DOCKER_DATABASE_URL` so the bot can reach the `postgres` service. Set `MINT_URL` to the Cashu mint you plan to use (e.g., `http://localhost:3338` for a local Nutshell or `https://mint.minibits.cash/Bitcoin/` for an external mint). The entire toolchain references this variable—swap its value whenever you change environments. When you run the bot in Docker, you can override the value seen by the container via `BOT_MINT_URL` (default `http://mint:3338`) so the container talks to the in-network mint while the host keeps using `http://localhost:3338`. The `.env` file also includes Nutshell-specific knobs (`MINT_BACKEND_BOLT11_SAT`, `MINT_PRIVATE_KEY`, etc.) so you can spin up the bundled mint when needed; leave them untouched if you only rely on an external mint.
 
 3. Run the bot locally
 
@@ -26,20 +23,6 @@ Discord auction house powered by Cashu ecash. Users can deposit, bid with collat
    ```
 
    The bot automatically runs a background finalizer that settles ended auctions every 15 seconds. Tweak the cadence via `AUCTION_FINALIZER_INTERVAL_MS`.
-
-## Local Nutshell Mint
-
-Use the official [cashubtc/nutshell](https://github.com/cashubtc/nutshell) images to run a disposable mint for development:
-
-```bash
-# Start the mint on http://localhost:3338
-bun run mint:up
-
-# Tear it down when you are done
-bun run mint:down
-```
-
-The default `.env` already points `MINT_URL` and `LOCAL_MINT_URL` to `http://localhost:3338`, so the bot plus the Bun tests will automatically target the local mint. Adjust `DEFAULT_COLLATERAL_RATIO` (1–100) to set the fallback percentage used when users omit the option in `/auction create`. When running the full docker compose stack the `bot` service connects to the `mint` service via the internal hostname `http://mint:3338`.
 
 ### Slash Commands & Permissions
 
@@ -66,23 +49,21 @@ The default `.env` already points `MINT_URL` and `LOCAL_MINT_URL` to `http://loc
 
 ### Tests
 
-Tests rely on Bun’s built-in runner. The mint health spec pings three endpoints: your local Nutshell mint plus the two public `testnut` instances.
+Tests rely on Bun’s built-in runner. The mint health spec simply pings whatever URL you set in `MINT_URL`, so pointing that variable at a different mint automatically switches the target for the suite.
 
 ```bash
 bun test
 ```
 
-> **Note:** Start the local Nutshell mint (`bun run mint:up`) before running the test suite. You still need outbound access to `https://testnut.cashu.space` and `https://nofees.testnut.cashu.space` for the remote assertions.
-
 ## Docker & Compose
 
-Build and run the bot plus Postgres (and the Nutshell mint) with Docker:
+Build and run the bot plus Postgres (and an optional Nutshell mint) with Docker:
 
 ```bash
 docker compose up --build
 ```
 
-The compose file exposes Postgres on `localhost:5432`, Nutshell on `localhost:3338`, and passes sensible defaults to the bot container. Ensure your `.env` contains the Discord and Cashu secrets before starting.
+The compose file exposes Postgres on `localhost:5432`, runs a Nutshell mint on `localhost:3338`, and passes the `.env` values to the bot container. Set `BOT_MINT_URL` (or leave the default `http://mint:3338`) so the container can reach the mint via the Docker network, while `MINT_URL` on the host can stay at `http://localhost:3338`. Ensure your `.env` contains the Discord and Cashu secrets before starting; switch `MINT_URL`/`BOT_MINT_URL` to an external URL when you want to bypass the local mint.
 
 ## Database Migrations
 
@@ -100,3 +81,6 @@ Once environment variables are set, publish slash commands with:
 ```bash
 bun run deploy-commands
 ```
+## Local Nutshell Mint
+
+Use the official [cashubtc/nutshell](https://github.com/cashubtc/nutshell) images (or `bun run mint:up` / `bun run mint:down` shortcuts) to run a disposable mint for development. When you start a mint on `http://localhost:3338`, update `MINT_URL` in `.env` to that address so the bot, tests, and Docker container all talk to it. Adjust `DEFAULT_COLLATERAL_RATIO` (1–100) to set the fallback percentage used when users omit the option in `/auction create`.

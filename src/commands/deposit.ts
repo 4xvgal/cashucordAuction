@@ -1,5 +1,6 @@
-import { SlashCommandBuilder, CommandInteraction, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType } from 'discord.js';
+import { SlashCommandBuilder, CommandInteraction, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType, AttachmentBuilder } from 'discord.js';
 import { walletService } from '../services/WalletService';
+import { buildInvoiceQrAttachment } from '../utils/qr';
 import { isAppError } from '../utils/errors';
 import { getInteractionLanguage, t } from '../utils/i18n';
 
@@ -57,9 +58,17 @@ async function handleInvoiceDeposit(interaction: CommandInteraction) {
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton);
 
+        const qrAttachment = await buildInvoiceQrAttachment(pr);
+
         const response = await interaction.editReply({
-            content: t('deposit.invoice.prompt', lang, { amount: amount.toString(), invoice: pr }),
+            content: t('deposit.invoice.prompt', lang, { amount: amount.toString() }),
             components: [row],
+            files: qrAttachment ? [qrAttachment] : undefined,
+        });
+
+        await interaction.followUp({
+            content: pr,
+            ephemeral: true,
         });
 
         const collector = response.createMessageComponentCollector({

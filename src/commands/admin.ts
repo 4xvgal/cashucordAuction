@@ -23,7 +23,7 @@ export async function execute(interaction: CommandInteraction) {
     if (!interaction.isChatInputCommand()) return;
     const lang = getInteractionLanguage(interaction);
 
-    if (!isRootAdmin(interaction.user.id)) {
+    if (!isRootAdmin(interaction.user)) {
         await interaction.reply({ content: t('auction.cancel.noPermission', lang), ephemeral: true });
         return;
     }

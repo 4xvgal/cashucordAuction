@@ -77,6 +77,26 @@ export const translations = {
     en: '🛑 Auction #{id} ({title}) has been cancelled.',
     ko: '🛑 #{id} ({title}) 경매가 취소되었습니다.',
   },
+  'auction.cancel.broadcast': {
+    en: '🛑 Auction #{id} ({title}) has been cancelled.',
+    ko: '🛑 #{id} ({title}) 경매가 취소되었습니다.',
+  },
+  'auction.edit.noChanges': {
+    en: 'Nothing to update. Provide at least one field.',
+    ko: '변경할 항목이 없습니다. 최소 한 가지 값을 입력하세요.',
+  },
+  'auction.edit.invalidTitle': {
+    en: 'Title cannot be empty.',
+    ko: '제목은 비워둘 수 없습니다.',
+  },
+  'auction.edit.hasBids': {
+    en: 'Start price and collateral ratio can only be changed before any bids are placed.',
+    ko: '입찰이 없는 경우에만 시작가와 담보율을 수정할 수 있습니다.',
+  },
+  'auction.edit.success': {
+    en: '✅ Auction #{id} updated (current title: {title}).',
+    ko: '✅ 경매 #{id}가 수정되었습니다 (현재 제목: {title}).',
+  },
   'auction.cancel.noPermission': {
     en: 'You do not have permission to cancel this auction.',
     ko: '이 경매를 취소할 권한이 없습니다.',
@@ -184,12 +204,8 @@ export const translations = {
       '**총합:** {total} sats',
   },
   'deposit.invoice.prompt': {
-    en:
-      'Here is your Lightning invoice for {amount} sats. After paying, press the button below to confirm.\n\n' +
-      '**Invoice:** ```{invoice}```',
-    ko:
-      '{amount} sats 라이트닝 청구서입니다. 결제 후 아래 버튼으로 입금을 확인하세요.\n\n' +
-      '**청구서:** ```{invoice}```',
+    en: 'Here is your Lightning invoice for {amount} sats. Scan or copy the invoice shown below, then press the button to confirm once it is paid.',
+    ko: '{amount} sats 라이트닝 청구서입니다. 아래 표시된 인보이스를 스캔하거나 복사한 뒤, 결제가 완료되면 버튼을 눌러 확인하세요.',
   },
   'deposit.invoice.success': {
     en: '✅ Deposit successful! {amount} sats have been added to your balance.',
@@ -216,8 +232,8 @@ export const translations = {
     ko: '토큰을 교환할 수 없습니다. 토큰이 잘못되었거나 만료/사용되었을 수 있습니다.',
   },
   'withdraw.token.dm': {
-    en: 'Here is your Cashu token for {amount} sats:\n\n{token}',
-    ko: '{amount} sats Cashu 토큰입니다:\n\n{token}',
+    en: 'Here is your Cashu token for {amount} sats. Scan the QR or copy the token below.',
+    ko: '{amount} sats Cashu 토큰입니다. QR을 스캔하거나 아래 토큰을 복사하세요.',
   },
   'withdraw.token.success': {
     en: '✅ Withdrawal successful! I have sent you a DM with the Cashu token for {amount} sats.',
@@ -240,8 +256,8 @@ export const translations = {
       '**프리이미지:**\n{preimage}',
   },
   'withdraw.invoice.success': {
-    en: 'Invoice paid! I have sent you a confirmation via DM.',
-    ko: '청구서를 지불했습니다! DM으로 확인 메시지를 보냈습니다.',
+    en: 'Invoice paid! I have sent you a confirmation via DM.\n(Network fee reserve: {fee} sats were held to cover Lightning fees. Keep some extra balance available for future withdrawals.)',
+    ko: '청구서를 지불했습니다! DM으로 확인 메시지를 보냈습니다.\n(라이트닝 수수료를 위해 {fee} sats를 예약했습니다. 다음 출금 시에도 수수료만큼 여유 잔액을 남겨주세요.)',
   },
   'withdraw.invoice.failure': {
     en: 'Failed to pay the invoice. The funds have been returned to your balance.',

@@ -27,38 +27,33 @@ test('selects the highest qualified bidder and releases collateral', () => {
 
   expect(result.winner?.userId).toBe('user-1');
   expect(result.winner?.bid.id).toBe(1);
-  expect(result.winner?.newBalance).toBe(50n);
-  expect(result.winner?.newLockedBalance).toBe(0n);
+  expect(result.winner?.collateral).toBe(30n);
   expect(result.disqualified.length).toBe(0);
 });
 
-test('skips bidders without enough balance and refunds their collateral', () => {
+test('disqualifies bids when the bidder record is missing', () => {
   const orderedBids: BidRecord[] = [
-    buildBid({ id: 1, bidderId: 'user-low', amount: 210n }),
+    buildBid({ id: 1, bidderId: 'ghost', amount: 210n }),
     buildBid({ id: 2, bidderId: 'user-ok', amount: 180n }),
   ];
 
   const bidderStates = new Map<string, { userId: string; balance: bigint; lockedBalance: bigint }>([
-    ['user-low', { userId: 'user-low', balance: 100n, lockedBalance: 70n }],
     ['user-ok', { userId: 'user-ok', balance: 250n, lockedBalance: 20n }],
   ]);
 
   const result = evaluateBidsForSettlement(orderedBids, bidderStates, 30);
 
-  expect(result.disqualified.map((entry) => entry.userId)).toContain('user-low');
+  expect(result.disqualified.map((entry) => entry.userId)).toContain('ghost');
   expect(result.winner?.userId).toBe('user-ok');
-  expect(result.winner?.newBalance).toBe(70n);
-  expect(result.winner?.newLockedBalance).toBe(0n);
+  expect(result.winner?.collateral).toBe(54n);
 });
 
-test('returns no winner when every bidder is disqualified', () => {
+test('returns no winner when every bidder entry is missing', () => {
   const orderedBids: BidRecord[] = [
     buildBid({ id: 1, bidderId: 'user-a', amount: 500n }),
   ];
 
-  const bidderStates = new Map<string, { userId: string; balance: bigint; lockedBalance: bigint }>([
-    ['user-a', { userId: 'user-a', balance: 100n, lockedBalance: 10n }],
-  ]);
+  const bidderStates = new Map<string, { userId: string; balance: bigint; lockedBalance: bigint }>();
 
   const result = evaluateBidsForSettlement(orderedBids, bidderStates, 10);
 

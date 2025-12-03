@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   mint:
     image: cashubtc/nutshell:0.18.2
@@ -53,7 +51,7 @@ services:
     environment:
       DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://cashucord:cashucord@postgres:5432/cashucord}
       AUCTION_FINALIZER_INTERVAL_MS: ${AUCTION_FINALIZER_INTERVAL_MS:-15000}
-      MINT_URL: ${MINT_URL_INTERNAL:-http://mint:3338}
+      MINT_URL: ${BOT_MINT_URL:-${MINT_URL}}
     command: bun start
 
 volumes:

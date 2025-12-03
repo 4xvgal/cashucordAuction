@@ -1,6 +1,8 @@
 import {
   Wallet,
   getDecodedToken,
+  getEncodedToken,
+  Token,
   Proof,
   MintQuoteState,
   MeltQuoteState,
@@ -12,21 +14,39 @@ import { encrypt, decrypt } from '../utils/crypto';
 import { eq, and, inArray } from 'drizzle-orm';
 import { AppError } from '../utils/errors';
 
-class WalletService {
+type WalletServiceDependencies = {
+  mintUrl?: string;
+  wallet?: Wallet;
+  database?: typeof db;
+  decodeToken?: typeof getDecodedToken;
+};
+
+export class WalletService {
   private wallet: Wallet;
   private ready: Promise<void>;
   private mintUrl: string;
+  private readonly database: typeof db;
+  private readonly decodeToken: typeof getDecodedToken;
+  private walletReady = false;
 
-  constructor() {
-    if (!process.env.MINT_URL) {
+  constructor(deps: WalletServiceDependencies = {}) {
+    const resolvedMintUrl = deps.mintUrl ?? process.env.MINT_URL;
+    if (!resolvedMintUrl) {
       throw new AppError('MINT_URL is not set in .env file', 'CONFIGURATION');
     }
-    this.mintUrl = process.env.MINT_URL;
-    this.wallet = new Wallet(this.mintUrl);
-    this.ready = this.wallet.loadMint();
+    this.mintUrl = resolvedMintUrl;
+    this.wallet = deps.wallet ?? new Wallet(this.mintUrl);
+    this.database = deps.database ?? db;
+    this.decodeToken = deps.decodeToken ?? getDecodedToken;
+    this.ready = Promise.resolve();
   }
 
   private async ensureReady() {
+    if (!this.walletReady) {
+      this.ready = this.wallet.loadMint().then(() => {
+        this.walletReady = true;
+      });
+    }
     await this.ready;
   }
 
@@ -59,7 +79,7 @@ class WalletService {
       const mintAmount = quote.amount ?? amount;
       const proofs = await this.wallet.mintProofs(mintAmount, hash);
       
-      await db.transaction(async (tx) => {
+      await this.database.transaction(async (tx) => {
         // Create user if not exists
         await tx.insert(usersTable)
           .values({ id: userId, balance: 0n, lockedBalance: 0n })
@@ -99,24 +119,43 @@ class WalletService {
    */
   async redeemTokenForDeposit(userId: string, encodedToken: string): Promise<{ amount: number }> {
     await this.ensureReady();
-    const decodedToken = getDecodedToken(encodedToken);
-    const tokenAmount = decodedToken.token.reduce((total, { proofs }) => total + proofs.reduce((sum, p) => sum + p.amount, 0), 0);
+    const decodedToken = this.decodeToken(encodedToken);
+    const tokenEntries = this.normalizeDecodedToken(decodedToken);
+    if (tokenEntries.length === 0) {
+      throw new AppError('Invalid Cashu token.', 'VALIDATION');
+    }
+    const normalizedEntries = tokenEntries.map((entry) => {
+      const resolvedMint = this.resolveMintUrl(entry.mint);
+      if (resolvedMint !== this.mintUrl) {
+        throw new AppError(`Token belongs to a different mint (${entry.mint}).`, 'VALIDATION');
+      }
+      return {
+        mint: resolvedMint,
+        proofs: entry.proofs,
+        memo: entry.memo,
+        unit: entry.unit,
+      };
+    });
+    const tokenAmount = normalizedEntries.reduce(
+      (total, entry) => total + entry.proofs.reduce((sum, proof) => sum + proof.amount, 0),
+      0,
+    );
+    const receivedProofs: Proof[] = [];
+    for (const entry of normalizedEntries) {
+      const payload = getEncodedToken(entry);
+      const proofs = await this.wallet.receive(payload);
+      receivedProofs.push(...proofs);
+    }
+    if (receivedProofs.length === 0) {
+      throw new AppError('Invalid Cashu token.', 'VALIDATION');
+    }
 
-    // The "swap" is essentially receiving the token and immediately creating a new one for the same amount.
-    // This invalidates the proofs the user sent.
-    // 1. Receive the token to get its proofs into the wallet's memory.
-    const receivedProofs = await this.wallet.receive(encodedToken);
-    
-    const { keep: newProofsForBot = [] } = await this.wallet.send(tokenAmount, receivedProofs);
-
-    await db.transaction(async (tx) => {
-      // Create user if not exists
+    await this.database.transaction(async (tx) => {
       await tx.insert(usersTable)
         .values({ id: userId, balance: 0n, lockedBalance: 0n })
         .onConflictDoNothing();
 
-      // Add new proofs to the treasury
-      const newProofs = newProofsForBot.map(p => ({
+      const newProofs = receivedProofs.map((p) => ({
         amount: p.amount,
         secret: encrypt(p.secret),
         C: p.C,
@@ -126,12 +165,11 @@ class WalletService {
       }));
       await tx.insert(proofsTable).values(newProofs);
 
-      // Update user's balance
       const currentUser = await tx.query.users.findFirst({ where: eq(usersTable.id, userId), for: 'update' });
       const currentBalance = currentUser?.balance ?? 0n;
       await tx.update(usersTable)
-          .set({ balance: currentBalance + BigInt(tokenAmount) })
-          .where(eq(usersTable.id, userId));
+        .set({ balance: currentBalance + BigInt(tokenAmount) })
+        .where(eq(usersTable.id, userId));
     });
 
     return { amount: tokenAmount };
@@ -147,7 +185,7 @@ class WalletService {
     await this.ensureReady();
     const bigIntAmount = BigInt(amount);
     
-    const result = await db.transaction(async (tx) => {
+    const result = await this.database.transaction(async (tx) => {
       // 1. Lock user row and check balance
       const user = await tx.query.users.findFirst({ where: eq(usersTable.id, userId), for: 'update' });
       if (!user || user.balance < bigIntAmount) {
@@ -204,57 +242,82 @@ class WalletService {
    * @param invoice The LN invoice to pay.
    * @returns The result of the payment.
    */
-  async payLightningInvoice(userId: string, invoice: string): Promise<{ isPaid: boolean, preimage: string | undefined, change: Proof[] }> {
+  async payLightningInvoice(userId: string, invoice: string): Promise<{
+    isPaid: boolean;
+    preimage: string | undefined;
+    change: Proof[];
+    feeReserve: number;
+    amount: number;
+  }> {
     await this.ensureReady();
 
-    const result = await db.transaction(async (tx) => {
-        const user = await tx.query.users.findFirst({ where: eq(usersTable.id, userId), for: 'update' });
-        const meltQuote = await this.wallet.createMeltQuoteBolt11(invoice);
-        const amountToSend = meltQuote.amount + meltQuote.fee_reserve;
-        const bigIntAmountToSend = BigInt(amountToSend);
+    const result = await this.database.transaction(async (tx) => {
+      const user = await tx.query.users.findFirst({ where: eq(usersTable.id, userId), for: 'update' });
+      const meltQuote = await this.wallet.createMeltQuoteBolt11(invoice);
+      const amountToSend = (meltQuote.amount ?? 0) + (meltQuote.fee_reserve ?? 0);
+      const bigIntAmountToSend = BigInt(amountToSend);
 
-        if (!user || user.balance < bigIntAmountToSend) {
-            throw new AppError('Insufficient balance.', 'INSUFFICIENT_FUNDS');
+      if (!user || user.balance < bigIntAmountToSend) {
+        throw new AppError('Insufficient balance.', 'INSUFFICIENT_FUNDS');
+      }
+
+      const { selectedProofs, proofsToUpdate } = await this._selectProofsForAmount(tx, amountToSend);
+
+      const proofsForMelting: Proof[] = selectedProofs.map((p) => ({
+        ...(p.rawProof as Proof),
+        secret: decrypt(p.secret),
+      }));
+
+      const { keep = [], send } = await this.wallet.send(amountToSend, proofsForMelting, { includeFees: true });
+      const meltResponse = await this.wallet.meltProofs(meltQuote, send);
+      const mintChange = meltResponse.change ?? [];
+      const isPaid = meltResponse.quote.state === MeltQuoteState.PAID;
+      const preimage = meltResponse.quote.payment_preimage ?? undefined;
+
+      if (isPaid) {
+        await tx.delete(proofsTable).where(inArray(proofsTable.id, proofsToUpdate.map((p) => p.id)));
+
+        if (keep.length > 0) {
+          const keepRecords = keep.map((p) => ({
+            amount: p.amount,
+            secret: encrypt(p.secret),
+            C: p.C,
+            id_set: p.id,
+            mint_url: this.mintUrl,
+            rawProof: p,
+          }));
+          await tx.insert(proofsTable).values(keepRecords);
         }
 
-        const { selectedProofs, proofsToUpdate } = await this._selectProofsForAmount(tx, amountToSend);
-
-        const proofsForMelting: Proof[] = selectedProofs.map(p => ({
-            ...p.rawProof as Proof,
-            secret: decrypt(p.secret),
-        }));
-        
-        const { keep = [], send } = await this.wallet.send(amountToSend, proofsForMelting, { includeFees: true });
-        const meltResponse = await this.wallet.meltProofs(meltQuote, send);
-        const isPaid = meltResponse.quote.state === MeltQuoteState.PAID;
-        const preimage = meltResponse.quote.payment_preimage ?? undefined;
-        const meltedChange = [...keep, ...meltResponse.change];
-
-        if (isPaid) {
-            await tx.delete(proofsTable).where(inArray(proofsTable.id, proofsToUpdate.map(p => p.id)));
-
-            if (meltedChange.length > 0) {
-                const newChangeProofs = meltedChange.map(p => ({
-                    amount: p.amount,
-                    secret: encrypt(p.secret),
-                    C: p.C,
-                    id_set: p.id,
-                    mint_url: this.mintUrl,
-                    rawProof: p,
-                }));
-                await tx.insert(proofsTable).values(newChangeProofs);
-            }
-            const changeAmount = meltedChange.reduce((sum, proof) => sum + BigInt(proof.amount), 0n);
-            const netSpent = bigIntAmountToSend - changeAmount;
-            await tx.update(usersTable)
-                .set({ balance: user.balance - netSpent })
-                .where(eq(usersTable.id, userId));
-        } else {
-            // If payment fails, release the reserved proofs
-            await tx.update(proofsTable).set({ isReserved: false }).where(inArray(proofsTable.id, proofsToUpdate.map(p => p.id)));
+        if (mintChange.length > 0) {
+          const changeRecords = mintChange.map((p) => ({
+            amount: p.amount,
+            secret: encrypt(p.secret),
+            C: p.C,
+            id_set: p.id,
+            mint_url: this.mintUrl,
+            rawProof: p,
+          }));
+          await tx.insert(proofsTable).values(changeRecords);
         }
 
-        return { isPaid, preimage, change: meltedChange };
+        const mintChangeAmount = mintChange.reduce((sum, proof) => sum + BigInt(proof.amount), 0n);
+        const netSpent = bigIntAmountToSend - mintChangeAmount;
+        await tx.update(usersTable).set({ balance: user.balance - netSpent }).where(eq(usersTable.id, userId));
+      } else {
+        await tx
+          .update(proofsTable)
+          .set({ isReserved: false })
+          .where(inArray(proofsTable.id, proofsToUpdate.map((p) => p.id)));
+      }
+
+      return {
+        isPaid,
+        preimage,
+        change: [...keep, ...mintChange],
+        feeReserve: meltQuote.fee_reserve ?? 0,
+        amount: meltQuote.amount ?? 0,
+      };
     });
 
     return result;
@@ -294,6 +357,29 @@ class WalletService {
 
 
     return { selectedProofs, proofsToUpdate, proofsAmount: sum };
+  }
+
+  private normalizeDecodedToken(decoded: unknown) {
+    if (!decoded) return [];
+    if (Array.isArray(decoded)) {
+      return decoded as Token[];
+    }
+    if (Array.isArray((decoded as any).token)) {
+      return (decoded as any).token as Token[];
+    }
+    if (typeof decoded === 'object' && 'proofs' in (decoded as any)) {
+      return [decoded as Token];
+    }
+    return [];
+  }
+
+  private resolveMintUrl(tokenMint?: string) {
+    if (!tokenMint) return this.mintUrl;
+    const alias = process.env.BOT_MINT_URL;
+    if (alias && tokenMint === alias) {
+      return this.mintUrl;
+    }
+    return tokenMint;
   }
 }
 

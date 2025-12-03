@@ -6,7 +6,6 @@ import moment from 'moment';
 import { AppError, isAppError } from '../utils/errors';
 import { getInteractionLanguage, t } from '../utils/i18n';
 import { buildPublicBidMessage } from '../utils/privacy';
-import { getInteractionLanguage, t } from '../utils/i18n';
 
 export const data = new SlashCommandBuilder()
     .setName('bid')
@@ -40,63 +39,84 @@ export async function execute(interaction: CommandInteraction) {
 
     try {
         const result = await db.transaction(async (tx) => {
-            // 1. Get auction and lock it
             const auction = await tx.query.auctions.findFirst({
                 where: eq(auctions.id, auctionId),
                 for: 'update',
             });
 
-            if (!auction) { throw new AppError(t('bid.error.notFound', lang), 'AUCTION_NOT_FOUND'); }
-            if (auction.status !== 'ACTIVE') { throw new AppError(t('bid.error.inactive', lang), 'AUCTION_INACTIVE'); }
-            if (moment().isAfter(auction.endTime)) { throw new AppError(t('bid.error.ended', lang), 'AUCTION_ENDED'); }
-            if (bidAmount <= auction.currentPrice) { throw new AppError(t('bid.error.lowAmount', lang, { price: auction.currentPrice.toString() })); }
-            if (auction.sellerId === bidderId) { throw new AppError(t('bid.error.selfBid', lang)); }
+            if (!auction) {
+                throw new AppError(t('bid.error.notFound', lang), 'AUCTION_NOT_FOUND');
+            }
+            if (auction.status !== 'ACTIVE') {
+                throw new AppError(t('bid.error.inactive', lang), 'AUCTION_INACTIVE');
+            }
+            if (moment().isAfter(auction.endTime)) {
+                throw new AppError(t('bid.error.ended', lang), 'AUCTION_ENDED');
+            }
+            if (bidAmount <= auction.currentPrice) {
+                throw new AppError(t('bid.error.lowAmount', lang, { price: auction.currentPrice.toString() }));
+            }
+            if (auction.sellerId === bidderId) {
+                throw new AppError(t('bid.error.selfBid', lang));
+            }
 
-            // 2. Get bidder and lock them
             const bidder = await tx.query.users.findFirst({
                 where: eq(users.id, bidderId),
                 for: 'update',
             });
-            
+
             const bidderBalance = bidder?.balance ?? 0n;
             const bidderLockedBalance = bidder?.lockedBalance ?? 0n;
 
-            // 3. Collateral Check
-            const requiredCollateral = (bidAmount * BigInt(auction.collateralRatio)) / 100n;
-            const availableBalance = bidderBalance - bidderLockedBalance;
-
-            if (availableBalance < requiredCollateral) {
-                throw new AppError(t('bid.error.collateral', lang, { required: requiredCollateral.toString() }), 'INSUFFICIENT_FUNDS');
-            }
-
-            // 4. Find previous top bidder to release their collateral
             const previousBid = await tx.query.bids.findFirst({
                 where: eq(bids.auctionId, auctionId),
-                orderBy: [desc(bids.amount)],
+                orderBy: [desc(bids.amount), desc(bids.timestamp)],
             });
 
-            let newLockedBalance = bidderLockedBalance;
+            const baseCollateral = (bidAmount * BigInt(auction.collateralRatio)) / 100n;
+            const requiredCollateral = baseCollateral > bidAmount ? bidAmount : baseCollateral;
+
+            const refundableCollateral =
+                previousBid && previousBid.bidderId === bidderId
+                    ? (previousBid.amount * BigInt(auction.collateralRatio)) / 100n
+                    : 0n;
+
+            const effectiveBalance = bidderBalance + refundableCollateral;
+            if (effectiveBalance < requiredCollateral) {
+                throw new AppError(
+                    t('bid.error.collateral', lang, { required: requiredCollateral.toString() }),
+                    'INSUFFICIENT_FUNDS',
+                );
+            }
 
             if (previousBid && previousBid.bidderId !== bidderId) {
-                // Release previous bidder's collateral
-                const prevBidder = await tx.query.users.findFirst({ where: eq(users.id, previousBid.bidderId), for: 'update' });
+                const prevBidder = await tx.query.users.findFirst({
+                    where: eq(users.id, previousBid.bidderId),
+                    for: 'update',
+                });
                 if (prevBidder) {
-                    const prevCollateral = (previousBid.amount * BigInt(auction.collateralRatio)) / 100n;
-                    await tx.update(users)
-                        .set({ lockedBalance: prevBidder.lockedBalance - prevCollateral })
+                    const prevBaseCollateral = (previousBid.amount * BigInt(auction.collateralRatio)) / 100n;
+                    const prevCollateral =
+                        prevBaseCollateral > previousBid.amount ? previousBid.amount : prevBaseCollateral;
+                    await tx
+                        .update(users)
+                        .set({
+                            lockedBalance:
+                                prevBidder.lockedBalance > prevCollateral
+                                    ? prevBidder.lockedBalance - prevCollateral
+                                    : 0n,
+                            balance: prevBidder.balance + prevCollateral,
+                        })
                         .where(eq(users.id, previousBid.bidderId));
                 }
             }
-            
-            // If the current bidder was the previous top bidder, their old collateral needs to be "refunded" before the new one is locked
-            if (previousBid && previousBid.bidderId === bidderId) {
-                const prevCollateral = (previousBid.amount * BigInt(auction.collateralRatio)) / 100n;
-                newLockedBalance -= prevCollateral;
-            }
 
-            // 5. Lock new collateral for the current bidder
-            newLockedBalance += requiredCollateral;
-            await tx.update(users).set({ lockedBalance: newLockedBalance }).where(eq(users.id, bidderId));
+            const newLockedBalance = bidderLockedBalance - refundableCollateral + requiredCollateral;
+            const newBalance = effectiveBalance - requiredCollateral;
+            await tx
+                .update(users)
+                .set({ lockedBalance: newLockedBalance, balance: newBalance })
+                .where(eq(users.id, bidderId));
 
             // 6. Insert new bid
             await tx.insert(bids).values({

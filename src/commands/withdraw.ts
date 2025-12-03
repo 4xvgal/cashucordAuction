@@ -1,8 +1,19 @@
-import { SlashCommandBuilder, CommandInteraction } from 'discord.js';
+import { SlashCommandBuilder, CommandInteraction, AttachmentBuilder } from 'discord.js';
 import { walletService } from '../services/WalletService';
-import { getDecodedToken } from '@cashu/cashu-ts';
 import { isAppError } from '../utils/errors';
 import { getInteractionLanguage, t } from '../utils/i18n';
+import QRCode from 'qrcode';
+
+const buildTokenQr = async (token: string) => {
+    try {
+        const dataUrl = await QRCode.toDataURL(token, { margin: 1, scale: 6 });
+        const base64 = dataUrl.split(',')[1];
+        return new AttachmentBuilder(Buffer.from(base64, 'base64'), { name: 'cashu-token.png' });
+    } catch (error) {
+        console.error('Failed to generate withdraw token QR code:', error);
+        return null;
+    }
+};
 
 export const data = new SlashCommandBuilder()
     .setName('withdraw')
@@ -40,9 +51,15 @@ export async function execute(interaction: CommandInteraction) {
         const amount = interaction.options.getInteger('amount', true);
         try {
             const { token, finalAmount } = await walletService.createWithdrawalToken(interaction.user.id, amount);
-            
+
+            const qrAttachment = await buildTokenQr(token);
+            const dm = await interaction.user.send({
+                content: t('withdraw.token.dm', lang, { amount: finalAmount.toString() }),
+                files: qrAttachment ? [qrAttachment] : undefined,
+            });
+
             await interaction.user.send({
-                content: t('withdraw.token.dm', lang, { amount: finalAmount.toString(), token }),
+                content: token,
             });
 
             await interaction.editReply(t('withdraw.token.success', lang, { amount: finalAmount.toString() }));
@@ -56,19 +73,15 @@ export async function execute(interaction: CommandInteraction) {
     } else if (subcommand === 'invoice') {
         const invoice = interaction.options.getString('invoice', true);
         try {
-            const { amount } = getDecodedToken(invoice);
-            if (!amount) {
-                await interaction.editReply(t('withdraw.invoice.invalid', lang));
-                return;
-            }
-
-            const { isPaid, preimage } = await walletService.payLightningInvoice(interaction.user.id, invoice);
+            const { isPaid, preimage, feeReserve, amount } = await walletService.payLightningInvoice(interaction.user.id, invoice);
 
             if (isPaid) {
                 await interaction.user.send(
                     t('withdraw.invoice.dm', lang, { amount: amount.toString(), preimage: preimage ?? '' }),
                 );
-                await interaction.editReply(t('withdraw.invoice.success', lang));
+                await interaction.editReply(
+                    t('withdraw.invoice.success', lang, { fee: (feeReserve ?? 0).toString() }),
+                );
             } else {
                 await interaction.editReply(t('withdraw.invoice.failure', lang));
             }

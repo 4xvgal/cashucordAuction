@@ -1,5 +1,5 @@
 import moment from 'moment';
-import { and, asc, desc, eq, inArray, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lte, sql } from 'drizzle-orm';
 import { Client } from 'discord.js';
 import { db } from '../db';
 import { auctions, bids, users } from '../db/schema';
@@ -162,10 +162,16 @@ export class AuctionService {
 
       for (const disqualified of evaluation.disqualified) {
         if (!bidderStates.has(disqualified.userId)) continue;
-        await tx
-          .update(users)
-          .set({ lockedBalance: disqualified.newLockedBalance })
-          .where(eq(users.id, disqualified.userId));
+        const releaseAmount = disqualified.collateralReleased;
+        if (releaseAmount > 0n) {
+          await tx
+            .update(users)
+            .set({
+              lockedBalance: sql`${users.lockedBalance} - ${releaseAmount}`,
+              balance: sql`${users.balance} + ${releaseAmount}`,
+            })
+            .where(eq(users.id, disqualified.userId));
+        }
       }
 
       if (!evaluation.winner) {
@@ -184,17 +190,62 @@ export class AuctionService {
         );
       }
 
-      const rawDeposit = (finalPrice * BigInt(auction.collateralRatio)) / 100n;
-      const depositAmount = rawDeposit > finalPrice ? finalPrice : rawDeposit;
-      const remainingAmount = finalPrice - depositAmount;
-      const restoreAmount = winnerState.bid.amount - depositAmount;
+      const depositAmount = winnerState.collateral;
+      const remainingAmount = finalPrice > depositAmount ? finalPrice - depositAmount : 0n;
 
-      const winnerBalanceAfter = winnerState.newBalance + restoreAmount;
+      const winnerRow = await tx.query.users.findFirst({
+        where: eq(users.id, winnerState.userId),
+        for: 'update',
+      });
+      if (!winnerRow) {
+        throw new AppError('Winner account missing.', 'AUCTION_NOT_FOUND');
+      }
+      const currentWinnerBalance = winnerRow.balance ?? 0n;
+      const currentWinnerLocked = winnerRow.lockedBalance ?? 0n;
+      const paymentFromBalance = remainingAmount;
+      if (currentWinnerBalance < paymentFromBalance) {
+        const winnerLockedAfter =
+          currentWinnerLocked > depositAmount ? currentWinnerLocked - depositAmount : currentWinnerLocked;
+        await tx
+          .update(users)
+          .set({
+            balance: currentWinnerBalance,
+            lockedBalance: winnerLockedAfter,
+          })
+          .where(eq(users.id, winnerState.userId));
+
+        let seller = await tx.query.users.findFirst({ where: eq(users.id, auction.sellerId), for: 'update' });
+        if (!seller) {
+          await tx.insert(users).values({ id: auction.sellerId }).onConflictDoNothing();
+          seller = await tx.query.users.findFirst({ where: eq(users.id, auction.sellerId), for: 'update' });
+        }
+        const sellerBalance = seller?.balance ?? 0n;
+        await tx
+          .update(users)
+          .set({ balance: sellerBalance + depositAmount })
+          .where(eq(users.id, auction.sellerId));
+
+        await tx
+          .update(auctions)
+          .set({
+            status: 'CANCELLED',
+            finalPrice: null,
+            winnerId: null,
+          })
+          .where(eq(auctions.id, auction.id));
+
+        return { status: 'CANCELLED', auctionId, reason: 'WINNER_DEFAULTED' };
+      }
+
+      const winnerBalanceAfter = currentWinnerBalance - paymentFromBalance;
+      const winnerLockedAfter =
+        currentWinnerLocked > depositAmount ? currentWinnerLocked - depositAmount : currentWinnerLocked;
+
       await tx
         .update(users)
         .set({
           balance: winnerBalanceAfter,
-          lockedBalance: winnerState.newLockedBalance,
+          lockedBalance: winnerLockedAfter,
         })
         .where(eq(users.id, winnerState.userId));
 

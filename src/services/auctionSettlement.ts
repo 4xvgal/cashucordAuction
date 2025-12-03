@@ -10,7 +10,6 @@ export type BidderState = {
 
 export type BidderDisqualification = {
   userId: string;
-  newLockedBalance: bigint;
   collateralReleased: bigint;
 };
 
@@ -19,8 +18,7 @@ export type BidEvaluationResult = {
     | {
         bid: BidRecord;
         userId: string;
-        newBalance: bigint;
-        newLockedBalance: bigint;
+        collateral: bigint;
       }
     | undefined;
   disqualified: BidderDisqualification[];
@@ -36,23 +34,12 @@ export const evaluateBidsForSettlement = (
   for (const bid of orderedBids) {
     const state = bidderStates.get(bid.bidderId);
     const collateral = (bid.amount * BigInt(collateralRatio)) / 100n;
+    const cappedCollateral = collateral > bid.amount ? bid.amount : collateral;
 
     if (!state) {
       disqualified.push({
         userId: bid.bidderId,
-        newLockedBalance: 0n,
-        collateralReleased: collateral,
-      });
-      continue;
-    }
-
-    const newLockedBalance = state.lockedBalance > collateral ? state.lockedBalance - collateral : 0n;
-
-    if (state.balance < bid.amount) {
-      disqualified.push({
-        userId: state.userId,
-        newLockedBalance,
-        collateralReleased: collateral,
+        collateralReleased: cappedCollateral,
       });
       continue;
     }
@@ -61,8 +48,7 @@ export const evaluateBidsForSettlement = (
       winner: {
         bid,
         userId: state.userId,
-        newBalance: state.balance - bid.amount,
-        newLockedBalance,
+        collateral: cappedCollateral,
       },
       disqualified,
     };

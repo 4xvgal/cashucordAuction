@@ -92,7 +92,7 @@ async function handleAccept(interaction: CommandInteraction) {
 
       if (
         auctionRecord.sellerId !== interaction.user.id &&
-        !isRootAdmin(interaction.user.id)
+        !isRootAdmin(interaction.user)
       ) {
         throw new Error('Only the seller or an admin can accept offers.');
       }
@@ -185,7 +185,7 @@ async function handleDecline(interaction: CommandInteraction) {
   const auctionRecord = await db.query.auctions.findFirst({ where: eq(auctions.id, offerRecord.auctionId) });
   if (
     auctionRecord?.sellerId !== interaction.user.id &&
-    !isRootAdmin(interaction.user.id)
+    !isRootAdmin(interaction.user)
   ) {
     await interaction.editReply('Only the seller or an admin can decline offers.');
     return;

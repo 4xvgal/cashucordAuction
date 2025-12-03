@@ -78,6 +78,34 @@ export const data = new SlashCommandBuilder()
     )
     .addSubcommand(subcommand =>
         subcommand
+            .setName('edit')
+            .setDescription('Edit one of your auctions (title always, start price/collateral only if no bids).')
+            .addIntegerOption(option =>
+                option.setName('auction_id')
+                    .setDescription('ID of the auction to edit.')
+                    .setRequired(true)
+            )
+            .addStringOption(option =>
+                option.setName('title')
+                    .setDescription('Updated title for the auction.')
+                    .setRequired(false)
+            )
+            .addIntegerOption(option =>
+                option.setName('start_price')
+                    .setDescription('New starting price (only if no bids yet).')
+                    .setRequired(false)
+                    .setMinValue(1)
+            )
+            .addIntegerOption(option =>
+                option.setName('collateral_ratio')
+                    .setDescription('New collateral ratio 1-100 (only if no bids yet).')
+                    .setRequired(false)
+                    .setMinValue(1)
+                    .setMaxValue(100)
+            )
+    )
+    .addSubcommand(subcommand =>
+        subcommand
             .setName('cancel')
             .setDescription('Cancels one of your auctions (admins can cancel any auction).')
             .addIntegerOption(option =>
@@ -118,6 +146,8 @@ export async function execute(interaction: CommandInteraction) {
         await handleListAuctions(interaction);
     } else if (subcommand === 'cancel') {
         await handleCancelAuction(interaction);
+    } else if (subcommand === 'edit') {
+        await handleEditAuction(interaction);
     }
 }
 
@@ -247,13 +277,13 @@ async function handleCancelAuction(interaction: CommandInteraction) {
                 throw new AppError(t('auction.cancel.inactive', lang), 'AUCTION_INACTIVE');
             }
 
-            if (!canManageAuction(userId, auction.sellerId)) {
+            if (!canManageAuction(interaction.user, auction.sellerId)) {
                 throw new AppError(t('auction.cancel.noPermission', lang), 'VALIDATION');
             }
 
             const topBid = await tx.query.bids.findFirst({
                 where: eq(bids.auctionId, auction.id),
-                orderBy: [desc(bids.amount)],
+                orderBy: [desc(bids.amount), desc(bids.timestamp)],
             });
 
             if (topBid) {
@@ -264,12 +294,16 @@ async function handleCancelAuction(interaction: CommandInteraction) {
 
                 if (bidder) {
                     const collateral = (topBid.amount * BigInt(auction.collateralRatio)) / 100n;
-                    const updatedLocked = bidder.lockedBalance > collateral
-                        ? bidder.lockedBalance - collateral
-                        : 0n;
-                    await tx.update(users)
-                        .set({ lockedBalance: updatedLocked })
-                        .where(eq(users.id, bidder.id));
+                    const cappedCollateral = collateral > topBid.amount ? topBid.amount : collateral;
+                    const releaseAmount = bidder.lockedBalance < cappedCollateral ? bidder.lockedBalance : cappedCollateral;
+                    if (releaseAmount > 0n) {
+                        await tx.update(users)
+                            .set({
+                                lockedBalance: bidder.lockedBalance - releaseAmount,
+                                balance: bidder.balance + releaseAmount,
+                            })
+                            .where(eq(users.id, bidder.id));
+                    }
                 }
             }
 
@@ -286,9 +320,105 @@ async function handleCancelAuction(interaction: CommandInteraction) {
                 title: result.auction.title,
             }),
         );
+
+        const broadcastMessage = t('auction.cancel.broadcast', lang, {
+            id: result.auction.id.toString(),
+            title: result.auction.title,
+        });
+        await interaction.followUp({ content: broadcastMessage, ephemeral: false });
     } catch (error) {
         console.error('Error cancelling auction:', error);
         const lang = getInteractionLanguage(interaction);
+        const message = isAppError(error) ? error.message : t('errors.generic', lang);
+        await interaction.editReply(message);
+    }
+}
+
+async function handleEditAuction(interaction: CommandInteraction) {
+    await interaction.deferReply({ ephemeral: true });
+    const lang = getInteractionLanguage(interaction);
+    const auctionId = interaction.options.getInteger('auction_id', true);
+    const newTitleRaw = interaction.options.getString('title');
+    const newStartPrice = interaction.options.getInteger('start_price');
+    const newCollateral = interaction.options.getInteger('collateral_ratio');
+
+    if (!newTitleRaw && newStartPrice === null && newCollateral === null) {
+        await interaction.editReply(t('auction.edit.noChanges', lang));
+        return;
+    }
+
+    try {
+        const result = await db.transaction(async (tx) => {
+            const auction = await tx.query.auctions.findFirst({
+                where: eq(auctions.id, auctionId),
+                for: 'update',
+            });
+
+            if (!auction) {
+                throw new AppError(t('bid.error.notFound', lang), 'AUCTION_NOT_FOUND');
+            }
+            if (!canManageAuction(interaction.user, auction.sellerId)) {
+                throw new AppError(t('auction.cancel.noPermission', lang), 'VALIDATION');
+            }
+            if (auction.status !== 'ACTIVE') {
+                throw new AppError(t('auction.cancel.inactive', lang), 'VALIDATION');
+            }
+
+            const updates: Partial<typeof auction> = {};
+            let changed = false;
+
+            if (newTitleRaw) {
+                const title = newTitleRaw.trim();
+                if (!title) {
+                    throw new AppError(t('auction.edit.invalidTitle', lang), 'VALIDATION');
+                }
+                updates.title = title;
+                changed = true;
+            }
+
+            const hasBids = await tx.query.bids.findFirst({
+                where: eq(bids.auctionId, auctionId),
+                columns: { id: true },
+            });
+
+            if (newStartPrice !== null) {
+                if (hasBids) {
+                    throw new AppError(t('auction.edit.hasBids', lang), 'VALIDATION');
+                }
+                updates.startPrice = BigInt(newStartPrice);
+                updates.currentPrice = BigInt(newStartPrice);
+                changed = true;
+            }
+
+            if (newCollateral !== null) {
+                if (hasBids) {
+                    throw new AppError(t('auction.edit.hasBids', lang), 'VALIDATION');
+                }
+                updates.collateralRatio = newCollateral;
+                changed = true;
+            }
+
+            if (!changed) {
+                throw new AppError(t('auction.edit.noChanges', lang), 'VALIDATION');
+            }
+
+            const [updated] = await tx
+                .update(auctions)
+                .set(updates)
+                .where(eq(auctions.id, auction.id))
+                .returning();
+
+            return updated;
+        });
+
+        await interaction.editReply(
+            t('auction.edit.success', lang, {
+                id: result.id.toString(),
+                title: result.title,
+            }),
+        );
+    } catch (error) {
+        console.error('Error editing auction:', error);
         const message = isAppError(error) ? error.message : t('errors.generic', lang);
         await interaction.editReply(message);
     }
