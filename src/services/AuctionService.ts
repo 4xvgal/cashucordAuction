@@ -9,8 +9,10 @@ import {
   BidEvaluationResult,
   evaluateBidsForSettlement,
 } from './auctionSettlement';
+import { determineVickreyPrice } from '../utils/vickrey';
 import { buildAuditLogMessage, buildPublicResultMessage, buildSellerDM, buildWinnerDM } from '../utils/privacy';
 import { getDefaultLanguage } from '../utils/i18n';
+import { walletService } from './WalletService';
 
 type AuctionRecord = typeof auctions.$inferSelect;
 type BidRecord = typeof bids.$inferSelect;
@@ -28,6 +30,10 @@ type FinalizedAuctionResult = {
   auction: AuctionRecord;
   winnerId: string;
   bidAmount: bigint;
+  depositAmount: bigint;
+  winnerIsAnonymous: boolean;
+  buyerBalance: bigint;
+  sellerBalance: bigint;
 };
 
 export class AuctionService {
@@ -59,7 +65,7 @@ export class AuctionService {
         const results = await this.finalizeExpiredAuctions();
         for (const result of results) {
           if (result && result.status === 'ENDED') {
-            await this.handleConclusion(result as FinalizedAuctionResult);
+            await this.announceConclusion(result as FinalizedAuctionResult);
           }
         }
       } catch (error) {
@@ -169,10 +175,25 @@ export class AuctionService {
 
       const winnerState = evaluation.winner;
 
+      let finalPrice = winnerState.bid.amount;
+      if (auction.auctionMode === 'VICKREY') {
+        finalPrice = determineVickreyPrice(
+          sortedBids.map((bid) => ({ bidderId: bid.bidderId, amount: bid.amount })),
+          winnerState.userId,
+          auction.startPrice,
+        );
+      }
+
+      const rawDeposit = (finalPrice * BigInt(auction.collateralRatio)) / 100n;
+      const depositAmount = rawDeposit > finalPrice ? finalPrice : rawDeposit;
+      const remainingAmount = finalPrice - depositAmount;
+      const restoreAmount = winnerState.bid.amount - depositAmount;
+
+      const winnerBalanceAfter = winnerState.newBalance + restoreAmount;
       await tx
         .update(users)
         .set({
-          balance: winnerState.newBalance,
+          balance: winnerBalanceAfter,
           lockedBalance: winnerState.newLockedBalance,
         })
         .where(eq(users.id, winnerState.userId));
@@ -184,15 +205,17 @@ export class AuctionService {
       }
 
       const sellerBalance = seller?.balance ?? 0n;
+      const sellerBalanceAfter = sellerBalance + depositAmount;
       await tx
         .update(users)
-        .set({ balance: sellerBalance + winnerState.bid.amount })
+        .set({ balance: sellerBalanceAfter })
         .where(eq(users.id, auction.sellerId));
 
       const updatedAuction: AuctionRecord = {
         ...auction,
         status: 'ENDED',
-        currentPrice: winnerState.bid.amount,
+        currentPrice: finalPrice,
+        finalPrice,
         winnerId: winnerState.userId,
       };
 
@@ -200,7 +223,8 @@ export class AuctionService {
         .update(auctions)
         .set({
           status: 'ENDED',
-          currentPrice: winnerState.bid.amount,
+          currentPrice: finalPrice,
+          finalPrice,
           winnerId: winnerState.userId,
         })
         .where(eq(auctions.id, auction.id));
@@ -209,7 +233,11 @@ export class AuctionService {
         status: 'ENDED' as const,
         auction: updatedAuction,
         winnerId: winnerState.userId,
-        bidAmount: winnerState.bid.amount,
+        bidAmount: finalPrice,
+        depositAmount,
+        winnerIsAnonymous: winnerState.bid.isAnonymous ?? false,
+        buyerBalance: winnerBalanceAfter,
+        sellerBalance: sellerBalanceAfter,
       };
     }, { isolationLevel: 'serializable' });
   }
@@ -254,10 +282,18 @@ export class AuctionService {
     return items;
   }
 
-  private async handleConclusion(result: FinalizedAuctionResult) {
+  async announceConclusion(result: FinalizedAuctionResult) {
     if (!this.client) return;
     const lang = getDefaultLanguage();
-    const publicMessage = buildPublicResultMessage(result.auction, { amount: result.bidAmount, winnerId: result.winnerId }, lang);
+    const publicMessage = buildPublicResultMessage(
+      result.auction,
+      {
+        amount: result.bidAmount,
+        winnerId: result.winnerId,
+        isAnonymous: result.winnerIsAnonymous,
+      },
+      lang,
+    );
 
     if (this.announceChannelId) {
       try {
@@ -270,29 +306,69 @@ export class AuctionService {
       }
     }
 
+    const remaining = result.bidAmount - result.depositAmount;
+    await this.notifySeller(result, lang, remaining);
+    await this.notifyWinner(result, lang, remaining);
+    await this.writeAuditLog(result, remaining);
+  }
+
+  private async notifySeller(result: FinalizedAuctionResult, lang: string, remaining: bigint) {
+    if (!this.client) return;
     try {
       const sellerUser = await this.client.users.fetch(result.auction.sellerId);
-      await sellerUser.send(buildSellerDM(result.auction, { amount: result.bidAmount, winnerId: result.winnerId }, lang));
+      await sellerUser.send(
+        buildSellerDM(
+          result.auction,
+          {
+            amount: result.bidAmount,
+            winnerId: result.winnerId,
+            deposit: result.depositAmount,
+            remaining,
+            balance: result.sellerBalance,
+          },
+          lang,
+        ),
+      );
     } catch (error) {
       console.error('Failed to DM seller about auction result:', error);
     }
+  }
 
+  private async notifyWinner(result: FinalizedAuctionResult, lang: string, remaining: bigint) {
+    if (!this.client) return;
     try {
       const winnerUser = await this.client.users.fetch(result.winnerId);
-      await winnerUser.send(buildWinnerDM(result.auction, { amount: result.bidAmount }, lang));
+      await winnerUser.send(
+        buildWinnerDM(
+          result.auction,
+          {
+            amount: result.bidAmount,
+            deposit: result.depositAmount,
+            remaining,
+            balance: result.buyerBalance,
+          },
+          lang,
+        ),
+      );
     } catch (error) {
       console.error('Failed to DM winner about auction result:', error);
     }
+  }
 
-    if (this.auditChannelId) {
-      try {
-        const channel = await this.client.channels.fetch(this.auditChannelId);
-        if (channel && channel.isTextBased()) {
-          await channel.send(buildAuditLogMessage(result.auction, { amount: result.bidAmount, winnerId: result.winnerId }));
-        }
-      } catch (error) {
-        console.error('Failed to write to audit log channel:', error);
+  private async writeAuditLog(result: FinalizedAuctionResult, remaining: bigint) {
+    if (!this.client || !this.auditChannelId) return;
+    try {
+      const channel = await this.client.channels.fetch(this.auditChannelId);
+      if (channel && channel.isTextBased()) {
+        await channel.send(
+          buildAuditLogMessage(result.auction, {
+            amount: result.bidAmount,
+            winnerId: result.winnerId,
+          }) + `\nDeposit: ${result.depositAmount.toString()} sats\nRemaining: ${remaining.toString()} sats`,
+        );
       }
+    } catch (error) {
+      console.error('Failed to write to audit log channel:', error);
     }
   }
 

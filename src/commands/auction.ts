@@ -19,7 +19,7 @@ const resolveDefaultCollateralRatio = () => {
 
 export const data = new SlashCommandBuilder()
     .setName('auction')
-    .setDescription('Manages auctions.')
+    .setDescription('Create, list, or cancel auctions (supports Vickrey mode, anti-snipe, privacy).')
     .addSubcommand(subcommand =>
         subcommand
             .setName('create')
@@ -46,6 +46,30 @@ export const data = new SlashCommandBuilder()
                     .setMinValue(1)
                     .setMaxValue(100)
                     .setRequired(false)
+            )
+            .addBooleanOption(option =>
+                option.setName('anti_snipe_enabled')
+                    .setDescription('Enable or disable anti-snipe auto extension (default: enabled).')
+            )
+            .addIntegerOption(option =>
+                option.setName('anti_snipe_trigger')
+                    .setDescription('Seconds before end to trigger anti-snipe extension.')
+                    .setMinValue(5)
+                    .setRequired(false)
+            )
+            .addIntegerOption(option =>
+                option.setName('anti_snipe_extension')
+                    .setDescription('Number of seconds to extend when anti-snipe triggers.')
+                    .setMinValue(5)
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName('mode')
+                    .setDescription('Auction mode.')
+                    .addChoices(
+                        { name: 'English (default)', value: 'ENGLISH' },
+                        { name: 'Vickrey (second price)', value: 'VICKREY' },
+                    )
             )
             .addBooleanOption(option =>
                 option.setName('privacy_mode')
@@ -108,6 +132,10 @@ async function handleCreateAuction(interaction: CommandInteraction) {
         const defaultCollateralRatio = resolveDefaultCollateralRatio();
         const collateralRatio = interaction.options.getInteger('collateral_ratio') ?? defaultCollateralRatio;
         const isPrivacyMode = interaction.options.getBoolean('privacy_mode') ?? false;
+        const auctionMode = (interaction.options.getString('mode') as 'ENGLISH' | 'VICKREY' | null) ?? 'ENGLISH';
+        const antiSnipeEnabled = interaction.options.getBoolean('anti_snipe_enabled') ?? true;
+        const antiSnipeTrigger = interaction.options.getInteger('anti_snipe_trigger') ?? 60;
+        const antiSnipeExtension = interaction.options.getInteger('anti_snipe_extension') ?? 60;
 
         const sellerId = interaction.user.id;
 
@@ -128,6 +156,10 @@ async function handleCreateAuction(interaction: CommandInteraction) {
             endTime,
             status: 'ACTIVE',
             isPrivacyMode,
+            auctionMode,
+            antiSnipeEnabled,
+            antiSnipeTrigger,
+            antiSnipeExtension,
         }).returning();
 
         await interaction.editReply(
@@ -171,7 +203,7 @@ async function handleListAuctions(interaction: CommandInteraction) {
             const topBidLine = topBid
                 ? t('auction.list.topBid', lang, {
                     amount: topBid.amount.toString(),
-                    bidder: formatBidderDisplay(auction, topBid.bidderId),
+                    bidder: formatBidderDisplay(auction.id, topBid.bidderId, topBid.isAnonymous),
                   })
                 : t('auction.list.noBids', lang);
 

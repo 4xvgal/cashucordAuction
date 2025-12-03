@@ -21,7 +21,7 @@ const baseAuction = {
 const lang: BotLanguage = 'en';
 
 test('privacy alias masks bidder identity', () => {
-  const alias = formatBidderDisplay(baseAuction, 'user123');
+  const alias = formatBidderDisplay(baseAuction.id, 'user123', true);
   expect(alias.includes('<@')).toBeFalsy();
   expect(alias.startsWith('Bidder #')).toBeTruthy();
 });
@@ -35,6 +35,7 @@ test('public bid message hides bidder mention when privacy mode is on', () => {
       amount: 200n,
       bidderId: 'user123',
       endTime: new Date(),
+      isAnonymous: true,
     },
     lang,
   );
@@ -44,9 +45,14 @@ test('public bid message hides bidder mention when privacy mode is on', () => {
 
 test('auction conclusion hides winner publicly but includes in private DM', () => {
   const concludedAuction = { ...baseAuction, status: 'ENDED' as const, winnerId: 'winner123', isPrivacyMode: true };
-  const publicMessage = buildPublicResultMessage(concludedAuction, { amount: 500n, winnerId: 'winner123' }, lang);
+  const publicMessage = buildPublicResultMessage(concludedAuction, { amount: 500n, winnerId: 'winner123', isAnonymous: true }, lang);
   expect(publicMessage.includes('<@winner123>')).toBeFalsy();
 
-  const sellerDm = buildSellerDM(concludedAuction, { amount: 500n, winnerId: 'winner123' }, lang);
+  const sellerDm = buildSellerDM(
+    concludedAuction,
+    { amount: 500n, winnerId: 'winner123', deposit: 100n, remaining: 400n },
+    lang,
+  );
   expect(sellerDm.includes('<@winner123>')).toBeTruthy();
+  expect(sellerDm.includes('100')).toBeTruthy();
 });

@@ -1,0 +1,1 @@
+ALTER TABLE "auctions" ADD COLUMN "anti_snipe_enabled" boolean DEFAULT true NOT NULL;

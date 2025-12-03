@@ -43,13 +43,15 @@ The default `.env` already points `MINT_URL` and `LOCAL_MINT_URL` to `http://loc
 
 ### Slash Commands & Permissions
 
-- `/auction create` – create new auctions with collateral ratios, custom durations, and the optional privacy toggle (seller-level).
+- `/auction create` – create new auctions with collateral ratios, custom durations, anti-snipe toggles, and a mode selector (`ENGLISH` or `VICKREY`). Sellers can still allow bidders to reveal themselves, but each bidder decides that per bid.
 - `/auction list` – browse active/ended/cancelled auctions with live bid data (everyone).
 - `/auction cancel` – cancel an active auction (seller of that auction or a root admin).
-- `/bid` – place bids with automatic collateral locking, anti-snipe extensions, and better error feedback (everyone).
+- `/bid` – place bids with automatic collateral locking. Use the `anonymous` toggle to hide your Discord ID in public updates.
+- `/offer create|accept|decline` – submit direct purchase offers or have the seller/admin close the auction immediately by accepting one.
 - `/deposit` & `/withdraw` – Lightning invoice or Cashu token flows, including swap-based token redemption (everyone).
 - `/balance` – view your own balance (everyone).
 - `/admin balance` – inspect a user’s balance; restricted to root admins (IDs listed in `BOT_ADMIN_IDS`).
+- `/offer create|accept|decline` – submit or manage direct purchase offers.
 - `/help <language?>` – show usage guidance in English or Korean (`/help ko`), defaulting to `BOT_DEFAULT_LANGUAGE`.
 
 **Permission model**
@@ -58,11 +60,9 @@ The default `.env` already points `MINT_URL` and `LOCAL_MINT_URL` to `http://loc
 - Sellers (users who created auctions) can cancel only their own auctions.
 - Regular bidders can place bids, deposit, withdraw, and check their own balances but cannot manage auctions created by others.
 
-### Privacy auctions
-
-- Enable the privacy toggle when running `/auction create`. All public bid updates and the final public summary will hide bidder identities (aliases like *Bidder #1234* are shown instead).
-- Sellers and winners receive private DMs revealing the counterparties. Audit staff can review the real winner in the `AUDIT_LOG_CHANNEL_ID`.
-- Bidders are reminded via an ephemeral notice that their bid was recorded anonymously.
+- Each `/bid` has an `anonymous` option. When set to true, public embeds show aliases such as *Bidder #1234*, but the database (and seller/winner DMs) retain the real Discord ID. Anti-snipe extensions can be fully disabled or tuned per auction via `/auction create`.
+- `/auction create` exposes the `mode` flag. In `VICKREY`, the highest bid still wins, but the winner only pays the second-highest price (or the starting price if they were the sole bidder). The final sale figures are displayed publicly, but the winner can remain hidden if they bid anonymously.
+- `/offer` commands allow direct purchase offers outside the bidding stream. Accepting an offer immediately closes the auction, pays out the deposit token to the seller, and publishes the result.
 
 ### Tests
 

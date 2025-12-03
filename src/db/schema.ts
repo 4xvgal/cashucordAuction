@@ -41,6 +41,8 @@ export const proofs = pgTable('proofs', {
 });
 
 // Auctions Table
+export const auctionModeEnum = pgEnum('auction_mode', ['ENGLISH', 'VICKREY']);
+
 export const auctions = pgTable('auctions', {
   id: serial('id').primaryKey(),
   sellerId: text('seller_id').notNull().references(() => users.id),
@@ -52,8 +54,11 @@ export const auctions = pgTable('auctions', {
   status: auctionStatusEnum('status').notNull().default('ACTIVE'),
   antiSnipeTrigger: integer('anti_snipe_trigger').notNull().default(60), // 60 seconds
   antiSnipeExtension: integer('anti_snipe_extension').notNull().default(60), // 60 seconds
+  antiSnipeEnabled: boolean('anti_snipe_enabled').notNull().default(true),
   isPrivacyMode: boolean('is_privacy_mode').notNull().default(false),
   winnerId: text('winner_id').references(() => users.id),
+  auctionMode: auctionModeEnum('mode').notNull().default('ENGLISH'),
+  finalPrice: bigint('final_price', { mode: 'bigint' }),
 });
 
 export const auctionsRelations = relations(auctions, ({ one, many }) => ({
@@ -76,6 +81,15 @@ export const bids = pgTable('bids', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const offers = pgTable('offers', {
+  id: serial('id').primaryKey(),
+  auctionId: integer('auction_id').notNull().references(() => auctions.id),
+  proposerId: text('proposer_id').notNull().references(() => users.id),
+  amount: bigint('amount', { mode: 'bigint' }).notNull(),
+  status: text('status').notNull().default('PENDING'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const bidsRelations = relations(bids, ({ one }) => ({
 	auction: one(auctions, {
 		fields: [bids.auctionId],
@@ -85,4 +99,15 @@ export const bidsRelations = relations(bids, ({ one }) => ({
 		fields: [bids.bidderId],
 		references: [users.id],
 	}),
+}));
+
+export const offersRelations = relations(offers, ({ one }) => ({
+  auction: one(auctions, {
+    fields: [offers.auctionId],
+    references: [auctions.id],
+  }),
+  proposer: one(users, {
+    fields: [offers.proposerId],
+    references: [users.id],
+  }),
 }));

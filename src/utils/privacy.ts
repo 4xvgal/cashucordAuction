@@ -20,12 +20,12 @@ export const getPrivacyAlias = (auctionId: number, bidderId: string) => {
   return alias;
 };
 
-export const formatBidderDisplay = (auction: AuctionRecord, bidderId: string) =>
-  auction.isPrivacyMode ? getPrivacyAlias(auction.id, bidderId) : `<@${bidderId}>`;
+export const formatBidderDisplay = (auctionId: number, bidderId: string, isAnonymous: boolean) =>
+  isAnonymous ? getPrivacyAlias(auctionId, bidderId) : `<@${bidderId}>`;
 
 export const buildPublicBidMessage = (
   auction: AuctionRecord,
-  params: { title: string; id: number; amount: bigint; bidderId: string; endTime: Date },
+  params: { title: string; id: number; amount: bigint; bidderId: string; endTime: Date; isAnonymous: boolean },
   lang: BotLanguage,
 ) => {
   const endTimestamp = Math.floor(params.endTime.getTime() / 1000).toString();
@@ -36,47 +36,55 @@ export const buildPublicBidMessage = (
     title: params.title,
     id: params.id.toString(),
     amount: params.amount.toString(),
-    bidderDisplay: formatBidderDisplay(auction, params.bidderId),
+    bidderDisplay: formatBidderDisplay(auction.id, params.bidderId, params.isAnonymous),
     endNote: t(endNoteKey as any, lang, { timestamp: endTimestamp }),
   });
 };
 
 export const buildPublicResultMessage = (
   auction: AuctionRecord,
-  params: { amount: bigint; winnerId?: string },
+  params: { amount: bigint; winnerId?: string; isAnonymous?: boolean },
   lang: BotLanguage,
 ) => {
-  if (auction.isPrivacyMode) {
-    return t('auction.result.privacy', lang, { amount: params.amount.toString() });
+  if (!params.winnerId) {
+    return t('auction.result.noBids', lang);
   }
-  if (params.winnerId) {
-    return t('auction.result.public', lang, {
-      amount: params.amount.toString(),
-      winner: `<@${params.winnerId}>`,
-    });
-  }
-  return t('auction.result.noBids', lang);
+
+  const displayWinner = params.isAnonymous
+    ? getPrivacyAlias(auction.id, params.winnerId)
+    : `<@${params.winnerId}>`;
+
+  return t('auction.result.public', lang, {
+    amount: params.amount.toString(),
+    winner: displayWinner,
+  });
 };
 
 export const buildSellerDM = (
   auction: AuctionRecord,
-  params: { amount: bigint; winnerId: string },
+  params: { amount: bigint; winnerId: string; deposit: bigint; remaining: bigint; balance: bigint },
   lang: BotLanguage,
 ) =>
   t('auction.dm.seller', lang, {
     title: auction.title,
     winner: `<@${params.winnerId}>`,
     amount: params.amount.toString(),
+    deposit: params.deposit.toString(),
+    remaining: params.remaining.toString(),
+    balance: params.balance.toString(),
   });
 
 export const buildWinnerDM = (
   auction: AuctionRecord,
-  params: { amount: bigint },
+  params: { amount: bigint; deposit: bigint; remaining: bigint; balance: bigint },
   lang: BotLanguage,
 ) =>
   t('auction.dm.winner', lang, {
     title: auction.title,
     amount: params.amount.toString(),
+    deposit: params.deposit.toString(),
+    remaining: params.remaining.toString(),
+    balance: params.balance.toString(),
   });
 
 export const buildAuditLogMessage = (

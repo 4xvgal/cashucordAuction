@@ -15,6 +15,20 @@
       "when": 1764725682806,
       "tag": "0001_salty_mandrill",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1764726584226,
+      "tag": "0002_careless_layla_miller",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1764727150471,
+      "tag": "0003_hot_bushwacker",
+      "breakpoints": true
     }
   ]
 }

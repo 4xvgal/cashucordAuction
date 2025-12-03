@@ -66,8 +66,8 @@ export const translations = {
     ko: '<t:{timestamp}:R> 에 종료됨',
   },
   'auction.list.topBid': {
-    en: 'Top Bid: {amount} sats by <@{bidder}>',
-    ko: '최고 입찰: {amount} 사토시 (입찰자 <@{bidder}>)',
+    en: 'Top Bid: {amount} sats by {bidder}',
+    ko: '최고 입찰: {amount} 사토시 (입찰자 {bidder})',
   },
   'auction.list.noBids': {
     en: 'No bids yet',
@@ -160,12 +160,12 @@ export const translations = {
     ko: '입찰 없이 경매가 종료되었습니다.',
   },
   'auction.dm.seller': {
-    en: '✅ Your auction "{title}" sold to {winner} for {amount} sats.',
-    ko: '✅ "{title}" 경매가 {winner} 님에게 {amount} 사토시에 판매되었습니다.',
+    en: '✅ Auction "{title}" sold to {winner} for {amount} sats.\nDeposit credited now: {deposit} sats.\nRemaining to settle: {remaining} sats.\nYour new balance: {balance} sats.',
+    ko: '✅ "{title}" 경매가 {winner} 님에게 {amount} 사토시에 판매되었습니다.\n지금 입금된 보증금: {deposit} 사토시\n추가 정산 금액: {remaining} 사토시\n현재 잔액: {balance} 사토시',
   },
   'auction.dm.winner': {
-    en: '🎉 You won the auction "{title}" anonymously for {amount} sats!',
-    ko: '🎉 "{title}" 경매를 익명으로 {amount} 사토시에 낙찰 받았습니다!',
+    en: '🎉 You won "{title}" for {amount} sats.\nDeposit deducted now: {deposit} sats.\nRemaining to pay seller: {remaining} sats.\nYour new balance: {balance} sats.',
+    ko: '🎉 "{title}" 경매를 {amount} 사토시에 낙찰 받았습니다.\n이번에 차감된 보증금: {deposit} 사토시\n판매자에게 전달할 나머지 금액: {remaining} 사토시\n현재 잔액: {balance} 사토시',
   },
   'admin.balance.missing': {
     en: 'User <@{userId}> does not have a wallet record yet.',
@@ -256,10 +256,11 @@ export const translations = {
       '**Cashu Auction Bot Help**\n' +
       '- `/deposit invoice|token` — add funds by Lightning invoice or Cashu token.\n' +
       '- `/balance` — view available and locked balances.\n' +
-      '- `/auction create` — list an item with price, duration, and collateral.\n' +
+      '- `/auction create` — list an item with price, duration, collateral, anti-snipe options, and the auction `mode` (English/Vickrey).\n' +
       '- `/auction list` — browse active or past auctions.\n' +
       '- `/auction cancel` — cancel your auction (admins can cancel any).\n' +
-      '- `/bid` — place a bid (collateral is locked automatically).\n' +
+      '- `/bid` — place a bid (collateral locked automatically). Use the `anonymous` flag per bid if you want to hide your Discord ID.\n' +
+      '- `/offer create|accept|decline` — propose direct purchase offers or manage incoming ones as a seller/admin.\n' +
       '- `/withdraw token|invoice` — withdraw via Cashu token or pay a Lightning invoice.\n' +
       '- `/admin balance` — admins can inspect any user balance.\n\n' +
       'Default language: {lang}. Use `/help <language>` to switch between `en` or `ko`.',
@@ -267,10 +268,11 @@ export const translations = {
       '**Cashu 경매 봇 도움말**\n' +
       '- `/deposit invoice|token` — 라이트닝 청구서나 Cashu 토큰으로 충전합니다.\n' +
       '- `/balance` — 사용 가능/잠금 잔액을 확인합니다.\n' +
-      '- `/auction create` — 경매를 생성합니다 (가격, 기간, 담보 비율 설정).\n' +
+      '- `/auction create` — 경매를 생성합니다 (가격, 기간, 담보 비율, 스나이핑 방지 옵션, `mode` 설정: English/Vickrey).\n' +
       '- `/auction list` — 진행 중/종료된 경매를 확인합니다.\n' +
       '- `/auction cancel` — 자신의 경매를 취소합니다 (관리자는 전체 취소 가능).\n' +
-      '- `/bid` — 입찰합니다 (필요 담보가 자동으로 잠깁니다).\n' +
+      '- `/bid` — 입찰합니다 (담보 자동 잠금). 익명 입찰 시 `anonymous` 옵션을 true 로 설정하세요.\n' +
+      '- `/offer create|accept|decline` — 직접 구매 제안을 보내거나 판매자/관리자가 이를 수락/거절합니다.\n' +
       '- `/withdraw token|invoice` — Cashu 토큰 발급 또는 라이트닝 청구서 지불로 출금합니다.\n' +
       '- `/admin balance` — 관리자가 특정 유저 잔액을 조회합니다.\n\n' +
       '기본 언어: {lang}. `/help <language>` 명령으로 `en` 또는 `ko`를 선택할 수 있습니다.',

@@ -10,7 +10,7 @@ import { getInteractionLanguage, t } from '../utils/i18n';
 
 export const data = new SlashCommandBuilder()
     .setName('bid')
-    .setDescription('Places a bid on an active auction.')
+    .setDescription('Places a bid on an active auction (toggle anonymity per bid).')
     .addIntegerOption(option =>
         option.setName('auction_id')
             .setDescription('The ID of the auction to bid on.')
@@ -21,6 +21,10 @@ export const data = new SlashCommandBuilder()
             .setDescription('The amount in satoshis you want to bid.')
             .setRequired(true)
             .setMinValue(1)
+    )
+    .addBooleanOption(option =>
+        option.setName('anonymous')
+            .setDescription('Post this bid anonymously? Defaults to true.')
     );
 
 export async function execute(interaction: CommandInteraction) {
@@ -29,6 +33,7 @@ export async function execute(interaction: CommandInteraction) {
     const auctionId = interaction.options.getInteger('auction_id', true);
     const bidAmount = BigInt(interaction.options.getInteger('amount', true));
     const bidderId = interaction.user.id;
+    const anonymous = interaction.options.getBoolean('anonymous') ?? false;
 
     await interaction.deferReply();
     const lang = getInteractionLanguage(interaction);
@@ -98,14 +103,16 @@ export async function execute(interaction: CommandInteraction) {
                 auctionId: auctionId,
                 bidderId: bidderId,
                 amount: bidAmount,
-                isAnonymous: auction.isPrivacyMode,
+                isAnonymous: anonymous,
             });
 
             // 7. Anti-Snipe Logic
             let newEndTime = auction.endTime;
-            const antiSnipeThreshold = moment(auction.endTime).subtract(auction.antiSnipeTrigger, 'seconds');
-            if (moment().isAfter(antiSnipeThreshold)) {
-                newEndTime = moment(auction.endTime).add(auction.antiSnipeExtension, 'seconds').toDate();
+            if (auction.antiSnipeEnabled) {
+                const antiSnipeThreshold = moment(auction.endTime).subtract(auction.antiSnipeTrigger, 'seconds');
+                if (moment().isAfter(antiSnipeThreshold)) {
+                    newEndTime = moment(auction.endTime).add(auction.antiSnipeExtension, 'seconds').toDate();
+                }
             }
 
             // 8. Update auction price and potentially end time
@@ -127,12 +134,13 @@ export async function execute(interaction: CommandInteraction) {
                     amount: bidAmount,
                     bidderId,
                     endTime: result.newEndTime,
+                    isAnonymous: anonymous,
                 },
                 lang,
             ),
         );
 
-        if (result.auction.isPrivacyMode) {
+        if (anonymous) {
             await interaction.followUp({ content: t('bid.privacyNotice', lang), ephemeral: true });
         }
 
