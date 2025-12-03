@@ -36,7 +36,7 @@ export const translations = {
     ko:
       '🎉 **경매가 생성되었습니다!** 🎉\n\n' +
       '**상품:** {title}\n' +
-      '**시작가:** {startPrice} 사토시\n' +
+      '**시작가:** {startPrice} sats\n' +
       '**종료:** <t:{endTimestamp}:R>\n' +
       '**담보 비율:** {collateral}%\n\n' +
       '`/bid {id} <금액>` 으로 입찰하세요!',
@@ -54,7 +54,7 @@ export const translations = {
     ko:
       '**#{id} • {title}**\n' +
       '판매자: <@{seller}> • {endLabel}\n' +
-      '현재가: {price} 사토시 • 담보: {collateral}%\n' +
+      '현재가: {price} sats • 담보: {collateral}%\n' +
       '{topBid}',
   },
   'auction.list.end.active': {
@@ -67,7 +67,7 @@ export const translations = {
   },
   'auction.list.topBid': {
     en: 'Top Bid: {amount} sats by {bidder}',
-    ko: '최고 입찰: {amount} 사토시 (입찰자 {bidder})',
+    ko: '최고 입찰: {amount} sats (입찰자 {bidder})',
   },
   'auction.list.noBids': {
     en: 'No bids yet',
@@ -95,7 +95,7 @@ export const translations = {
     ko:
       '🚀 **최고 입찰가 갱신!**\n\n' +
       '**경매:** {title} (#{id})\n' +
-      '**새 금액:** {amount} 사토시\n' +
+      '**새 금액:** {amount} sats\n' +
       '**입찰자:** {bidderDisplay}\n\n' +
       '{endNote}',
   },
@@ -125,7 +125,7 @@ export const translations = {
   },
   'bid.error.lowAmount': {
     en: 'Your bid must be higher than the current price of {price} sats.',
-    ko: '입찰 금액은 현재가 {price} 사토시보다 높아야 합니다.',
+    ko: '입찰 금액은 현재가 {price} sats보다 높아야 합니다.',
   },
   'bid.error.selfBid': {
     en: 'You cannot bid on your own auction.',
@@ -133,7 +133,7 @@ export const translations = {
   },
   'bid.error.collateral': {
     en: 'Insufficient collateral. You need at least {required} sats available (Balance - Locked).',
-    ko: '담보가 부족합니다. (잔액 - 잠금)이 최소 {required} 사토시 이상이어야 합니다.',
+    ko: '담보가 부족합니다. (잔액 - 잠금)이 최소 {required} sats 이상이어야 합니다.',
   },
   'balance.display': {
     en:
@@ -143,17 +143,17 @@ export const translations = {
       '**Total:** {total} sats',
     ko:
       '현재 잔액:\n----------------\n' +
-      '**사용 가능:** {available} 사토시\n' +
-      '**입찰 잠금:** {locked} 사토시\n' +
-      '**총합:** {total} 사토시',
+      '**사용 가능:** {available} sats\n' +
+      '**입찰 잠금:** {locked} sats\n' +
+      '**총합:** {total} sats',
   },
   'auction.result.privacy': {
     en: 'Auction ended. Sold to an anonymous buyer for {amount} sats.',
-    ko: '경매가 종료되었습니다. 익명의 구매자에게 {amount} 사토시에 판매되었습니다.',
+    ko: '경매가 종료되었습니다. 익명의 구매자에게 {amount} sats에 판매되었습니다.',
   },
   'auction.result.public': {
     en: 'Auction ended. Sold to {winner} for {amount} sats.',
-    ko: '경매가 종료되었습니다. {winner} 님이 {amount} 사토시에 낙찰되었습니다.',
+    ko: '경매가 종료되었습니다. {winner} 님이 {amount} sats에 낙찰되었습니다.',
   },
   'auction.result.noBids': {
     en: 'Auction ended without any bids.',
@@ -161,11 +161,11 @@ export const translations = {
   },
   'auction.dm.seller': {
     en: '✅ Auction "{title}" sold to {winner} for {amount} sats.\nDeposit credited now: {deposit} sats.\nRemaining to settle: {remaining} sats.\nYour new balance: {balance} sats.',
-    ko: '✅ "{title}" 경매가 {winner} 님에게 {amount} 사토시에 판매되었습니다.\n지금 입금된 보증금: {deposit} 사토시\n추가 정산 금액: {remaining} 사토시\n현재 잔액: {balance} 사토시',
+    ko: '✅ "{title}" 경매가 {winner} 님에게 {amount} sats에 판매되었습니다.\n지금 입금된 보증금: {deposit} sats\n추가 정산 금액: {remaining} sats\n현재 잔액: {balance} sats',
   },
   'auction.dm.winner': {
     en: '🎉 You won "{title}" for {amount} sats.\nDeposit deducted now: {deposit} sats.\nRemaining to pay seller: {remaining} sats.\nYour new balance: {balance} sats.',
-    ko: '🎉 "{title}" 경매를 {amount} 사토시에 낙찰 받았습니다.\n이번에 차감된 보증금: {deposit} 사토시\n판매자에게 전달할 나머지 금액: {remaining} 사토시\n현재 잔액: {balance} 사토시',
+    ko: '🎉 "{title}" 경매를 {amount} sats에 낙찰 받았습니다.\n이번에 차감된 보증금: {deposit} sats\n판매자에게 전달할 나머지 금액: {remaining} sats\n현재 잔액: {balance} sats',
   },
   'admin.balance.missing': {
     en: 'User <@{userId}> does not have a wallet record yet.',
@@ -179,21 +179,21 @@ export const translations = {
       '**Total:** {total} sats',
     ko:
       '**사용자:** <@{userId}>\n' +
-      '**사용 가능:** {available} 사토시\n' +
-      '**잠금:** {locked} 사토시\n' +
-      '**총합:** {total} 사토시',
+      '**사용 가능:** {available} sats\n' +
+      '**잠금:** {locked} sats\n' +
+      '**총합:** {total} sats',
   },
   'deposit.invoice.prompt': {
     en:
       'Here is your Lightning invoice for {amount} sats. After paying, press the button below to confirm.\n\n' +
       '**Invoice:** ```{invoice}```',
     ko:
-      '{amount} 사토시 라이트닝 청구서입니다. 결제 후 아래 버튼으로 입금을 확인하세요.\n\n' +
+      '{amount} sats 라이트닝 청구서입니다. 결제 후 아래 버튼으로 입금을 확인하세요.\n\n' +
       '**청구서:** ```{invoice}```',
   },
   'deposit.invoice.success': {
     en: '✅ Deposit successful! {amount} sats have been added to your balance.',
-    ko: '✅ 입금 완료! {amount} 사토시가 잔액에 추가되었습니다.',
+    ko: '✅ 입금 완료! {amount} sats가 잔액에 추가되었습니다.',
   },
   'deposit.invoice.pending': {
     en: 'Payment not detected yet. Please try again in a few moments.',
@@ -209,7 +209,7 @@ export const translations = {
   },
   'deposit.token.success': {
     en: '✅ Deposit successful! Redeemed a token for {amount} sats.',
-    ko: '✅ 입금 완료! {amount} 사토시 토큰을 교환했습니다.',
+    ko: '✅ 입금 완료! {amount} sats 토큰을 교환했습니다.',
   },
   'deposit.token.failure': {
     en: 'Could not redeem the provided token. It might be invalid, expired, or already spent.',
@@ -217,11 +217,11 @@ export const translations = {
   },
   'withdraw.token.dm': {
     en: 'Here is your Cashu token for {amount} sats:\n\n{token}',
-    ko: '{amount} 사토시 Cashu 토큰입니다:\n\n{token}',
+    ko: '{amount} sats Cashu 토큰입니다:\n\n{token}',
   },
   'withdraw.token.success': {
     en: '✅ Withdrawal successful! I have sent you a DM with the Cashu token for {amount} sats.',
-    ko: '✅ 출금 완료! DM으로 {amount} 사토시 토큰을 전송했습니다.',
+    ko: '✅ 출금 완료! DM으로 {amount} sats 토큰을 전송했습니다.',
   },
   'withdraw.token.failure': {
     en: 'Could not process your withdrawal. {error}',
@@ -236,7 +236,7 @@ export const translations = {
       '✅ Invoice for {amount} sats paid successfully!\n' +
       '**Preimage:**\n{preimage}',
     ko:
-      '✅ {amount} 사토시 청구서를 성공적으로 지불했습니다!\n' +
+      '✅ {amount} sats 청구서를 성공적으로 지불했습니다!\n' +
       '**프리이미지:**\n{preimage}',
   },
   'withdraw.invoice.success': {
