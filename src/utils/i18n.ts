@@ -313,6 +313,42 @@ export const translations = {
     en: 'Failed to pay the invoice. The funds have been returned to your balance.',
     ko: '청구서를 지불하지 못했습니다. 금액은 잔액으로 반환되었습니다.',
   },
+  'withdraw.lnurl.invalid': {
+    en: 'That LNURL could not be decoded. Please double-check the lnurl1... string.',
+    ko: '해당 LNURL을 해독할 수 없습니다. lnurl1 로 시작하는 문자열을 다시 확인해주세요.',
+  },
+  'withdraw.lnurl.fetchFailed': {
+    en: 'Could not fetch LNURL metadata. The receiver may be offline.',
+    ko: 'LNURL 정보를 가져올 수 없습니다. 상대 노드가 오프라인일 수 있습니다.',
+  },
+  'withdraw.lnurl.unsupported': {
+    en: 'The LNURL response is not a payRequest link or is missing callback details.',
+    ko: '해당 LNURL이 payRequest 형식이 아니거나 callback 정보가 없습니다.',
+  },
+  'withdraw.lnurl.insecure': {
+    en: 'LNURL callback must use HTTPS (localhost allowed for testing only).',
+    ko: 'LNURL callback 은 HTTPS 여야 합니다 (테스트용 localhost 제외).',
+  },
+  'withdraw.lnurl.invalidRange': {
+    en: 'The LNURL sendable range is invalid.',
+    ko: 'LNURL에서 제공한 전송 가능 범위가 잘못되었습니다.',
+  },
+  'withdraw.lnurl.amountRequired': {
+    en: 'This LNURL accepts {min}–{max} sats. Please specify an amount within that range.',
+    ko: '이 LNURL은 {min}–{max} sats 범위만 허용합니다. 해당 범위 내 금액을 입력해주세요.',
+  },
+  'withdraw.lnurl.amountRange': {
+    en: 'Amount must be between {min} and {max} sats for this LNURL.',
+    ko: '이 LNURL은 {min}–{max} sats 사이만 허용합니다.',
+  },
+  'withdraw.lnurl.callbackFailed': {
+    en: 'The LNURL callback failed to return an invoice.',
+    ko: 'LNURL callback 에서 인보이스를 반환하지 못했습니다.',
+  },
+  'withdraw.lnurl.invoiceMissing': {
+    en: 'LNURL callback response did not include an invoice (pr).',
+    ko: 'LNURL callback 응답에 인보이스(pr)가 없습니다.',
+  },
   'deposit.invoice.button': {
     en: 'Confirm Payment',
     ko: '결제 확인',

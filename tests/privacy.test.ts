@@ -50,7 +50,7 @@ test('auction conclusion hides winner publicly but includes in private DM', () =
 
   const sellerDm = buildSellerDM(
     concludedAuction,
-    { amount: 500n, winnerId: 'winner123', deposit: 100n, remaining: 400n },
+    { amount: 500n, winnerId: 'winner123', deposit: 100n, remaining: 400n, balance: 1_000n },
     lang,
   );
   expect(sellerDm.includes('<@winner123>')).toBeTruthy();
