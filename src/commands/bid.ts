@@ -59,7 +59,9 @@ export async function execute(interaction: CommandInteraction) {
             if (moment().isAfter(auction.endTime)) {
                 throw new AppError(t('bid.error.ended', lang), 'AUCTION_ENDED');
             }
-            if (bidAmount <= auction.currentPrice) {
+            const isVickreyAuction = auction.auctionMode === 'VICKREY';
+
+            if (!isVickreyAuction && bidAmount <= auction.currentPrice) {
                 throw new AppError(t('bid.error.lowAmount', lang, { price: auction.currentPrice.toString() }));
             }
             if (auction.sellerId === bidderId) {
@@ -79,12 +81,16 @@ export async function execute(interaction: CommandInteraction) {
                 orderBy: [desc(bids.amount), desc(bids.timestamp)],
             });
 
-            const requiredCollateral = computeCollateral(bidAmount, auction.collateralRatio);
-
-            const refundableCollateral =
-                previousBid && previousBid.bidderId === bidderId
-                    ? computeCollateral(previousBid.amount, auction.collateralRatio)
-                    : 0n;
+            let requiredCollateral = computeCollateral(bidAmount, auction.collateralRatio);
+            let refundableCollateral = 0n;
+            if (previousBid && previousBid.bidderId === bidderId) {
+                const previousCollateral = computeCollateral(previousBid.amount, auction.collateralRatio);
+                if (bidAmount > previousBid.amount) {
+                    refundableCollateral = previousCollateral;
+                } else {
+                    requiredCollateral = 0n;
+                }
+            }
 
             const effectiveBalance = bidderBalance + refundableCollateral;
             if (effectiveBalance < requiredCollateral) {
@@ -131,7 +137,7 @@ export async function execute(interaction: CommandInteraction) {
 
             // 7. Anti-Snipe Logic
             let newEndTime = auction.endTime;
-            if (auction.antiSnipeEnabled) {
+            if (!isVickreyAuction && auction.antiSnipeEnabled) {
                 const antiSnipeThreshold = moment(auction.endTime).subtract(auction.antiSnipeTrigger, 'seconds');
                 if (moment().isAfter(antiSnipeThreshold)) {
                     newEndTime = moment(auction.endTime).add(auction.antiSnipeExtension, 'seconds').toDate();
@@ -139,8 +145,12 @@ export async function execute(interaction: CommandInteraction) {
             }
 
             // 8. Update auction price and potentially end time
+            const nextCurrentPrice = isVickreyAuction
+                ? (bidAmount > auction.currentPrice ? bidAmount : auction.currentPrice)
+                : bidAmount;
+
             await tx.update(auctions).set({
-                currentPrice: bidAmount,
+                currentPrice: nextCurrentPrice,
                 endTime: newEndTime,
             }).where(eq(auctions.id, auctionId));
 
