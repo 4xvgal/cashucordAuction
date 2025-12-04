@@ -11,6 +11,7 @@ import {
 } from './auctionSettlement';
 import { determineVickreyPrice } from '../utils/vickrey';
 import { buildAuditLogMessage, buildPublicResultMessage, buildSellerDM, buildWinnerDM } from '../utils/privacy';
+import { computeCollateral } from '../utils/collateral';
 import { getDefaultLanguage } from '../utils/i18n';
 import { walletService } from './WalletService';
 
@@ -191,8 +192,6 @@ export class AuctionService {
       }
 
       const depositAmount = winnerState.collateral;
-      const remainingAmount = finalPrice > depositAmount ? finalPrice - depositAmount : 0n;
-
       const winnerRow = await tx.query.users.findFirst({
         where: eq(users.id, winnerState.userId),
         for: 'update',
@@ -200,51 +199,14 @@ export class AuctionService {
       if (!winnerRow) {
         throw new AppError('Winner account missing.', 'AUCTION_NOT_FOUND');
       }
-      const currentWinnerBalance = winnerRow.balance ?? 0n;
       const currentWinnerLocked = winnerRow.lockedBalance ?? 0n;
-      const paymentFromBalance = remainingAmount;
-      if (currentWinnerBalance < paymentFromBalance) {
-        const winnerLockedAfter =
-          currentWinnerLocked > depositAmount ? currentWinnerLocked - depositAmount : currentWinnerLocked;
-        await tx
-          .update(users)
-          .set({
-            balance: currentWinnerBalance,
-            lockedBalance: winnerLockedAfter,
-          })
-          .where(eq(users.id, winnerState.userId));
-
-        let seller = await tx.query.users.findFirst({ where: eq(users.id, auction.sellerId), for: 'update' });
-        if (!seller) {
-          await tx.insert(users).values({ id: auction.sellerId }).onConflictDoNothing();
-          seller = await tx.query.users.findFirst({ where: eq(users.id, auction.sellerId), for: 'update' });
-        }
-        const sellerBalance = seller?.balance ?? 0n;
-        await tx
-          .update(users)
-          .set({ balance: sellerBalance + depositAmount })
-          .where(eq(users.id, auction.sellerId));
-
-        await tx
-          .update(auctions)
-          .set({
-            status: 'CANCELLED',
-            finalPrice: null,
-            winnerId: null,
-          })
-          .where(eq(auctions.id, auction.id));
-
-        return { status: 'CANCELLED', auctionId, reason: 'WINNER_DEFAULTED' };
-      }
-
-      const winnerBalanceAfter = currentWinnerBalance - paymentFromBalance;
       const winnerLockedAfter =
         currentWinnerLocked > depositAmount ? currentWinnerLocked - depositAmount : currentWinnerLocked;
+      const winnerBalanceAfter = winnerRow.balance ?? 0n;
 
       await tx
         .update(users)
         .set({
-          balance: winnerBalanceAfter,
           lockedBalance: winnerLockedAfter,
         })
         .where(eq(users.id, winnerState.userId));

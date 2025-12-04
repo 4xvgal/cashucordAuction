@@ -6,6 +6,7 @@ import moment from 'moment';
 import { AppError, isAppError } from '../utils/errors';
 import { getInteractionLanguage, t } from '../utils/i18n';
 import { buildPublicBidMessage } from '../utils/privacy';
+import { computeCollateral } from '../utils/collateral';
 
 export const data = new SlashCommandBuilder()
     .setName('bid')
@@ -73,8 +74,7 @@ export async function execute(interaction: CommandInteraction) {
                 orderBy: [desc(bids.amount), desc(bids.timestamp)],
             });
 
-            const baseCollateral = (bidAmount * BigInt(auction.collateralRatio)) / 100n;
-            const requiredCollateral = baseCollateral > bidAmount ? bidAmount : baseCollateral;
+            const requiredCollateral = computeCollateral(bidAmount, auction.collateralRatio);
 
             const refundableCollateral =
                 previousBid && previousBid.bidderId === bidderId
@@ -95,9 +95,7 @@ export async function execute(interaction: CommandInteraction) {
                     for: 'update',
                 });
                 if (prevBidder) {
-                    const prevBaseCollateral = (previousBid.amount * BigInt(auction.collateralRatio)) / 100n;
-                    const prevCollateral =
-                        prevBaseCollateral > previousBid.amount ? previousBid.amount : prevBaseCollateral;
+                    const prevCollateral = computeCollateral(previousBid.amount, auction.collateralRatio);
                     await tx
                         .update(users)
                         .set({

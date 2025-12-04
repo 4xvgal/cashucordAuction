@@ -1,4 +1,5 @@
 import type { bids } from '../db/schema';
+import { computeCollateral } from '../utils/collateral';
 
 export type BidRecord = typeof bids.$inferSelect;
 
@@ -33,8 +34,7 @@ export const evaluateBidsForSettlement = (
 
   for (const bid of orderedBids) {
     const state = bidderStates.get(bid.bidderId);
-    const collateral = (bid.amount * BigInt(collateralRatio)) / 100n;
-    const cappedCollateral = collateral > bid.amount ? bid.amount : collateral;
+    const cappedCollateral = computeCollateral(bid.amount, collateralRatio);
 
     if (!state) {
       disqualified.push({

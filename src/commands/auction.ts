@@ -1,14 +1,15 @@
-import { SlashCommandBuilder, CommandInteraction } from 'discord.js';
-import { db } from '../db';
-import { auctions, users, bids } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { CommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { desc, eq } from 'drizzle-orm';
 import moment from 'moment';
+import { db } from '../db';
+import { auctions, bids, users } from '../db/schema';
 import { auctionService } from '../services/AuctionService';
-import { AppError, isAppError } from '../utils/errors';
 import '../utils/env';
-import { canManageAuction } from '../utils/permissions';
+import { AppError, isAppError } from '../utils/errors';
 import { getInteractionLanguage, t } from '../utils/i18n';
+import { canManageAuction } from '../utils/permissions';
 import { formatBidderDisplay } from '../utils/privacy';
+import { computeCollateral } from '../utils/collateral';
 
 const resolveDefaultCollateralRatio = () => {
     const raw = process.env.DEFAULT_COLLATERAL_RATIO ?? '20';
@@ -158,7 +159,7 @@ async function handleCreateAuction(interaction: CommandInteraction) {
         const lang = getInteractionLanguage(interaction);
         const title = interaction.options.getString('title', true);
         const startPrice = interaction.options.getInteger('start_price', true);
-        const endTimeStr = interaction.options.getString('end_time') ?? '24h';
+        const endTimeStr = interaction.options.getString('end_time') ?? '3h';
         const defaultCollateralRatio = resolveDefaultCollateralRatio();
         const collateralRatio = interaction.options.getInteger('collateral_ratio') ?? defaultCollateralRatio;
         const isPrivacyMode = interaction.options.getBoolean('privacy_mode') ?? false;
@@ -293,8 +294,7 @@ async function handleCancelAuction(interaction: CommandInteraction) {
                 });
 
                 if (bidder) {
-                    const collateral = (topBid.amount * BigInt(auction.collateralRatio)) / 100n;
-                    const cappedCollateral = collateral > topBid.amount ? topBid.amount : collateral;
+                    const cappedCollateral = computeCollateral(topBid.amount, auction.collateralRatio);
                     const releaseAmount = bidder.lockedBalance < cappedCollateral ? bidder.lockedBalance : cappedCollateral;
                     if (releaseAmount > 0n) {
                         await tx.update(users)
