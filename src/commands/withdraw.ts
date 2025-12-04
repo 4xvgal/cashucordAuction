@@ -34,10 +34,11 @@ export const data = new SlashCommandBuilder()
             .setName('invoice')
             .setDescription('Withdraw by paying a Lightning invoice.')
             .addStringOption(option =>
-                option.setName('invoice')
-                    .setDescription('The Lightning invoice to pay.')
-                    .setRequired(true)
-            )
+                option
+                    .setName('invoice')
+                    .setDescription('Paste the Bolt11 Lightning invoice. Generate it with the amount you want the bot to pay.')
+                    .setRequired(true),
+            ),
     );
 
 export async function execute(interaction: CommandInteraction) {
@@ -71,8 +72,13 @@ export async function execute(interaction: CommandInteraction) {
             await interaction.editReply(message);
         }
     } else if (subcommand === 'invoice') {
-        const invoice = interaction.options.getString('invoice', true);
         try {
+            const invoice = interaction.options.getString('invoice', true).trim();
+            if (/^\d+$/.test(invoice)) {
+                await interaction.editReply(t('withdraw.invoice.numberInput', lang));
+                return;
+            }
+
             const { isPaid, preimage, feeReserve, amount } = await walletService.payLightningInvoice(interaction.user.id, invoice);
 
             if (isPaid) {
@@ -87,8 +93,14 @@ export async function execute(interaction: CommandInteraction) {
             }
         } catch (error: any) {
             console.error('Error paying Lightning invoice:', error);
-            const message = isAppError(error) ? error.message : t('errors.generic', lang);
-            await interaction.editReply(message);
+            const rawMessage = error?.message ? String(error.message) : '';
+            let response: string;
+            if (!isAppError(error) && /token version is not supported|Failed to decode|bolt11/i.test(rawMessage)) {
+                response = t('withdraw.invoice.decodeFailed', lang);
+            } else {
+                response = isAppError(error) ? error.message : t('errors.generic', lang);
+            }
+            await interaction.editReply(response);
         }
     }
 }

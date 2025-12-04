@@ -251,6 +251,14 @@ export const translations = {
     en: 'Invalid invoice. Could not decode amount.',
     ko: '잘못된 청구서입니다. 금액을 확인할 수 없습니다.',
   },
+  'withdraw.invoice.numberInput': {
+    en: 'Please paste a Lightning invoice. Entering a plain number will not work; generate an invoice for the desired amount and try again.',
+    ko: '숫자 입력이 아닌, 결제하고자 하는 금액으로 생성한 라이트닝 인보이스를 붙여넣어 주세요.',
+  },
+  'withdraw.invoice.decodeFailed': {
+    en: 'Failed to read that Lightning invoice. Double-check the text and make sure it is a valid Bolt11 string.',
+    ko: '라이트닝 인보이스를 읽을 수 없습니다. 올바른 Bolt11 문자열인지 다시 확인해 주세요.',
+  },
   'withdraw.invoice.dm': {
     en:
       '✅ Invoice for {amount} sats paid successfully!\n' +
