@@ -123,6 +123,10 @@ export const translations = {
     en: 'Your bid has been recorded anonymously. Good luck!',
     ko: '입찰이 익명으로 기록되었습니다. 행운을 빕니다!',
   },
+  'bid.success.ephemeral': {
+    en: '✅ Bid accepted. Posting the update in the channel.',
+    ko: '✅ 입찰이 접수되었습니다. 채널에 안내를 올립니다.',
+  },
   'bid.endNote.extended': {
     en: '**ANTI-SNIPE!** Auction extended! New end time: <t:{timestamp}:R>',
     ko: '**스나이프 방지!** 경매가 연장되었습니다. 새 종료 시각: <t:{timestamp}:R>',

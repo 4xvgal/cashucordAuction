@@ -35,7 +35,7 @@ export async function execute(interaction: CommandInteraction) {
     const bidderId = interaction.user.id;
     const anonymous = interaction.options.getBoolean('anonymous') ?? false;
 
-    await interaction.deferReply();
+    await interaction.deferReply({ ephemeral: true });
     const lang = getInteractionLanguage(interaction);
 
     try {
@@ -78,7 +78,7 @@ export async function execute(interaction: CommandInteraction) {
 
             const refundableCollateral =
                 previousBid && previousBid.bidderId === bidderId
-                    ? (previousBid.amount * BigInt(auction.collateralRatio)) / 100n
+                    ? computeCollateral(previousBid.amount, auction.collateralRatio)
                     : 0n;
 
             const effectiveBalance = bidderBalance + refundableCollateral;
@@ -143,20 +143,22 @@ export async function execute(interaction: CommandInteraction) {
         }, { isolationLevel: 'serializable' });
 
 
-        await interaction.editReply(
-            buildPublicBidMessage(
-                result.auction,
-                {
-                    title: result.auction.title,
-                    id: result.auction.id,
-                    amount: bidAmount,
-                    bidderId,
-                    endTime: result.newEndTime,
-                    isAnonymous: anonymous,
-                },
-                lang,
-            ),
+        await interaction.editReply(t('bid.success.ephemeral', lang));
+
+        const publicMessage = buildPublicBidMessage(
+            result.auction,
+            {
+                title: result.auction.title,
+                id: result.auction.id,
+                amount: bidAmount,
+                bidderId,
+                endTime: result.newEndTime,
+                isAnonymous: anonymous,
+            },
+            lang,
         );
+
+        await interaction.followUp({ content: publicMessage, ephemeral: false });
 
         if (anonymous) {
             await interaction.followUp({ content: t('bid.privacyNotice', lang), ephemeral: true });
@@ -165,6 +167,6 @@ export async function execute(interaction: CommandInteraction) {
     } catch (error: any) {
         console.error('Error placing bid:', error);
         const message = isAppError(error) ? error.message : t('errors.generic', lang);
-        await interaction.editReply(message);
+        await interaction.editReply({ content: message, ephemeral: true });
     }
 }
