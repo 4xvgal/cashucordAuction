@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction } from 'discord.js';
+import { SlashCommandBuilder, CommandInteraction, TextBasedChannel } from 'discord.js';
 import { db } from '../db';
 import { auctions, users, bids } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
@@ -25,6 +25,10 @@ export const data = new SlashCommandBuilder()
     .addBooleanOption(option =>
         option.setName('anonymous')
             .setDescription('Post this bid anonymously? Defaults to true.')
+    )
+    .addBooleanOption(option =>
+        option.setName('vickrey_notify')
+            .setDescription('For Vickrey auctions only: send an anonymous channel update for this bid.')
     );
 
 export async function execute(interaction: CommandInteraction) {
@@ -34,6 +38,7 @@ export async function execute(interaction: CommandInteraction) {
     const bidAmount = BigInt(interaction.options.getInteger('amount', true));
     const bidderId = interaction.user.id;
     const anonymous = interaction.options.getBoolean('anonymous') ?? false;
+    const notifyOverride = interaction.options.getBoolean('vickrey_notify');
 
     await interaction.deferReply({ ephemeral: true });
     const lang = getInteractionLanguage(interaction);
@@ -143,22 +148,44 @@ export async function execute(interaction: CommandInteraction) {
         }, { isolationLevel: 'serializable' });
 
 
-        await interaction.editReply(t('bid.success.ephemeral', lang));
+        const isVickrey = result.auction.auctionMode === 'VICKREY';
+        const shouldNotify = isVickrey
+            ? (notifyOverride ?? !!result.auction.notifyNewBids)
+            : true;
+        const successKey = isVickrey
+            ? shouldNotify ? 'bid.success.vickreyNotify' : 'bid.success.vickreySilent'
+            : 'bid.success.ephemeral';
+        await interaction.editReply(t(successKey, lang));
 
-        const publicMessage = buildPublicBidMessage(
-            result.auction,
-            {
-                title: result.auction.title,
-                id: result.auction.id,
-                amount: bidAmount,
-                bidderId,
-                endTime: result.newEndTime,
-                isAnonymous: anonymous,
-            },
-            lang,
-        );
-
-        await interaction.followUp({ content: publicMessage, ephemeral: false });
+        const targetChannel = await resolveNotificationChannel(interaction, result.auction.notifyChannelId);
+        if (isVickrey) {
+            if (shouldNotify && targetChannel) {
+                await targetChannel.send(
+                    t('auction.vickrey.newBid', lang, {
+                        id: result.auction.id.toString(),
+                        title: result.auction.title,
+                    }),
+                );
+            }
+        } else {
+            const publicMessage = buildPublicBidMessage(
+                result.auction,
+                {
+                    title: result.auction.title,
+                    id: result.auction.id,
+                    amount: bidAmount,
+                    bidderId,
+                    endTime: result.newEndTime,
+                    isAnonymous: anonymous,
+                },
+                lang,
+            );
+            if (targetChannel) {
+                await targetChannel.send(publicMessage);
+            } else {
+                await interaction.followUp({ content: publicMessage, ephemeral: false });
+            }
+        }
 
         if (anonymous) {
             await interaction.followUp({ content: t('bid.privacyNotice', lang), ephemeral: true });
@@ -169,4 +196,27 @@ export async function execute(interaction: CommandInteraction) {
         const message = isAppError(error) ? error.message : t('errors.generic', lang);
         await interaction.editReply({ content: message, ephemeral: true });
     }
+}
+
+async function resolveNotificationChannel(
+    interaction: CommandInteraction,
+    preferredChannelId?: string | null,
+): Promise<TextBasedChannel | null> {
+    const interactionChannel = interaction.channel;
+    if (interactionChannel && interactionChannel.isTextBased()) {
+        return interactionChannel;
+    }
+
+    if (preferredChannelId) {
+        try {
+            const fetched = await interaction.client.channels.fetch(preferredChannelId);
+            if (fetched && fetched.isTextBased()) {
+                return fetched;
+            }
+        } catch (error) {
+            console.error('Failed to fetch preferred channel for notification:', error);
+        }
+    }
+
+    return null;
 }

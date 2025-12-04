@@ -59,6 +59,8 @@ export const auctions = pgTable('auctions', {
   winnerId: text('winner_id').references(() => users.id),
   auctionMode: auctionModeEnum('mode').notNull().default('ENGLISH'),
   finalPrice: bigint('final_price', { mode: 'bigint' }),
+  notifyNewBids: boolean('notify_new_bids').notNull().default(false),
+  notifyChannelId: text('notify_channel_id'),
 });
 
 export const auctionsRelations = relations(auctions, ({ one, many }) => ({

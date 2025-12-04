@@ -70,11 +70,16 @@ export const data = new SlashCommandBuilder()
                     .addChoices(
                         { name: 'English (default)', value: 'ENGLISH' },
                         { name: 'Vickrey (second price)', value: 'VICKREY' },
+                        { name: 'Vickrey (second price, notify)', value: 'VICKREY_NOTIFY' },
                     )
             )
             .addBooleanOption(option =>
                 option.setName('privacy_mode')
                     .setDescription('Enable anonymous bidding for this auction.')
+            )
+            .addBooleanOption(option =>
+                option.setName('vickrey_notify')
+                    .setDescription('For Vickrey auctions only: send anonymous updates when new bids come in.')
             )
     )
     .addSubcommand(subcommand =>
@@ -103,6 +108,10 @@ export const data = new SlashCommandBuilder()
                     .setRequired(false)
                     .setMinValue(1)
                     .setMaxValue(100)
+            )
+            .addBooleanOption(option =>
+                option.setName('vickrey_notify')
+                    .setDescription('Vickrey only: toggle anonymous bid notifications for this auction.')
             )
     )
     .addSubcommand(subcommand =>
@@ -163,12 +172,18 @@ async function handleCreateAuction(interaction: CommandInteraction) {
         const defaultCollateralRatio = resolveDefaultCollateralRatio();
         const collateralRatio = interaction.options.getInteger('collateral_ratio') ?? defaultCollateralRatio;
         const isPrivacyMode = interaction.options.getBoolean('privacy_mode') ?? false;
-        const auctionMode = (interaction.options.getString('mode') as 'ENGLISH' | 'VICKREY' | null) ?? 'ENGLISH';
+        const rawMode = (interaction.options.getString('mode') as 'ENGLISH' | 'VICKREY' | 'VICKREY_NOTIFY' | null) ?? 'ENGLISH';
+        const auctionMode = rawMode === 'VICKREY' || rawMode === 'VICKREY_NOTIFY' ? 'VICKREY' : 'ENGLISH';
+        const notifyOption = interaction.options.getBoolean('vickrey_notify');
+        const notifyRequest = rawMode === 'VICKREY_NOTIFY' ? true : (notifyOption ?? false);
         const antiSnipeEnabled = interaction.options.getBoolean('anti_snipe_enabled') ?? true;
         const antiSnipeTrigger = interaction.options.getInteger('anti_snipe_trigger') ?? 60;
         const antiSnipeExtension = interaction.options.getInteger('anti_snipe_extension') ?? 60;
 
         const sellerId = interaction.user.id;
+        const guildId = interaction.guildId ?? 'GLOBAL';
+        const notifyNewBids = auctionMode === 'VICKREY' ? notifyRequest : false;
+        const notifyChannelId = interaction.channelId ?? null;
 
         // Ensure user exists
         const user = await db.query.users.findFirst({ where: eq(users.id, sellerId) });
@@ -180,6 +195,7 @@ async function handleCreateAuction(interaction: CommandInteraction) {
 
         const [newAuction] = await db.insert(auctions).values({
             sellerId,
+            guildId,
             title,
             startPrice: BigInt(startPrice),
             currentPrice: BigInt(startPrice),
@@ -191,6 +207,8 @@ async function handleCreateAuction(interaction: CommandInteraction) {
             antiSnipeEnabled,
             antiSnipeTrigger,
             antiSnipeExtension,
+            notifyNewBids,
+            notifyChannelId,
         }).returning();
 
         await interaction.editReply(
@@ -230,6 +248,14 @@ async function handleListAuctions(interaction: CommandInteraction) {
                 lang,
                 { timestamp: Math.floor(auction.endTime.getTime() / 1000).toString() },
             );
+
+            if (auction.auctionMode === 'VICKREY') {
+                return t('auction.list.vickreyEntry', lang, {
+                    id: auction.id.toString(),
+                    title: auction.title,
+                    endLabel,
+                });
+            }
 
             const topBidLine = topBid
                 ? t('auction.list.topBid', lang, {
@@ -341,6 +367,7 @@ async function handleEditAuction(interaction: CommandInteraction) {
     const newTitleRaw = interaction.options.getString('title');
     const newStartPrice = interaction.options.getInteger('start_price');
     const newCollateral = interaction.options.getInteger('collateral_ratio');
+    const newVickreyNotify = interaction.options.getBoolean('vickrey_notify');
 
     if (!newTitleRaw && newStartPrice === null && newCollateral === null) {
         await interaction.editReply(t('auction.edit.noChanges', lang));
@@ -395,6 +422,17 @@ async function handleEditAuction(interaction: CommandInteraction) {
                     throw new AppError(t('auction.edit.hasBids', lang), 'VALIDATION');
                 }
                 updates.collateralRatio = newCollateral;
+                changed = true;
+            }
+
+            if (newVickreyNotify !== null) {
+                if (auction.auctionMode !== 'VICKREY') {
+                    throw new AppError(t('auction.edit.vickreyOnly', lang), 'VALIDATION');
+                }
+                updates.notifyNewBids = newVickreyNotify;
+                if (newVickreyNotify) {
+                    updates.notifyChannelId = interaction.channelId ?? auction.notifyChannelId ?? null;
+                }
                 changed = true;
             }
 

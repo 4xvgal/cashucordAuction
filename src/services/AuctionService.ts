@@ -10,9 +10,9 @@ import {
   evaluateBidsForSettlement,
 } from './auctionSettlement';
 import { determineVickreyPrice } from '../utils/vickrey';
-import { buildAuditLogMessage, buildPublicResultMessage, buildSellerDM, buildWinnerDM } from '../utils/privacy';
+import { buildAuditLogMessage, buildPublicResultMessage, buildSellerDM, buildWinnerDM, getPrivacyAlias } from '../utils/privacy';
 import { computeCollateral } from '../utils/collateral';
-import { getDefaultLanguage } from '../utils/i18n';
+import { getDefaultLanguage, t } from '../utils/i18n';
 import { walletService } from './WalletService';
 
 type AuctionRecord = typeof auctions.$inferSelect;
@@ -35,6 +35,8 @@ type FinalizedAuctionResult = {
   winnerIsAnonymous: boolean;
   buyerBalance: bigint;
   sellerBalance: bigint;
+  highestBidAmount: bigint;
+  secondBidAmount: bigint;
 };
 
 export class AuctionService {
@@ -181,6 +183,8 @@ export class AuctionService {
       }
 
       const winnerState = evaluation.winner;
+      const highestBidAmount = sortedBids[0]?.amount ?? winnerState.bid.amount;
+      const secondBidAmount = sortedBids[1]?.amount ?? auction.startPrice;
 
       let finalPrice = winnerState.bid.amount;
       if (auction.auctionMode === 'VICKREY') {
@@ -251,6 +255,8 @@ export class AuctionService {
         winnerIsAnonymous: winnerState.bid.isAnonymous ?? false,
         buyerBalance: winnerBalanceAfter,
         sellerBalance: sellerBalanceAfter,
+        highestBidAmount,
+        secondBidAmount,
       };
     }, { isolationLevel: 'serializable' });
   }
@@ -298,6 +304,20 @@ export class AuctionService {
   async announceConclusion(result: FinalizedAuctionResult) {
     if (!this.client) return;
     const lang = getDefaultLanguage();
+    if (result.auction.auctionMode === 'VICKREY') {
+      await this.broadcastVickreyResult(result, lang);
+    } else {
+      await this.broadcastStandardResult(result, lang);
+    }
+
+    const remaining = result.bidAmount - result.depositAmount;
+    await this.notifySeller(result, lang, remaining);
+    await this.notifyWinner(result, lang, remaining);
+    await this.writeAuditLog(result, remaining);
+  }
+
+  private async broadcastStandardResult(result: FinalizedAuctionResult, lang: string) {
+    if (!this.announceChannelId) return;
     const publicMessage = buildPublicResultMessage(
       result.auction,
       {
@@ -307,22 +327,24 @@ export class AuctionService {
       },
       lang,
     );
+    await this.sendChannelMessage(this.announceChannelId, publicMessage);
+  }
 
-    if (this.announceChannelId) {
-      try {
-        const channel = await this.client.channels.fetch(this.announceChannelId);
-        if (channel && channel.isTextBased()) {
-          await channel.send(publicMessage);
-        }
-      } catch (error) {
-        console.error('Failed to send auction announcement:', error);
-      }
-    }
+  private async broadcastVickreyResult(result: FinalizedAuctionResult, lang: string) {
+    const alias = getPrivacyAlias(result.auction.id, result.winnerId);
+    const message = t('auction.vickrey.result.public', lang, {
+      id: result.auction.id.toString(),
+      title: result.auction.title,
+      alias,
+      highest: result.highestBidAmount.toString(),
+      second: result.secondBidAmount.toString(),
+    });
 
-    const remaining = result.bidAmount - result.depositAmount;
-    await this.notifySeller(result, lang, remaining);
-    await this.notifyWinner(result, lang, remaining);
-    await this.writeAuditLog(result, remaining);
+    const targets = new Set<string>();
+    if (this.announceChannelId) targets.add(this.announceChannelId);
+    if (result.auction.notifyChannelId) targets.add(result.auction.notifyChannelId);
+
+    await Promise.all(Array.from(targets).map((channelId) => this.sendChannelMessage(channelId, message)));
   }
 
   private async notifySeller(result: FinalizedAuctionResult, lang: string, remaining: bigint) {
@@ -382,6 +404,18 @@ export class AuctionService {
       }
     } catch (error) {
       console.error('Failed to write to audit log channel:', error);
+    }
+  }
+
+  private async sendChannelMessage(channelId: string | null | undefined, content: string) {
+    if (!channelId || !this.client) return;
+    try {
+      const channel = await this.client.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        await channel.send(content);
+      }
+    } catch (error) {
+      console.error(`Failed to send auction announcement to ${channelId}:`, error);
     }
   }
 

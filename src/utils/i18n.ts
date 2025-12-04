@@ -57,6 +57,16 @@ export const translations = {
       '현재가: {price} sats • 담보: {collateral}%\n' +
       '{topBid}',
   },
+  'auction.list.vickreyEntry': {
+    en:
+      '**#{id} • {title}**\n' +
+      '{endLabel}\n' +
+      '🔏 Vickrey auction — price and bidders stay hidden until it ends.',
+    ko:
+      '**#{id} • {title}**\n' +
+      '{endLabel}\n' +
+      '🔏 비크리 경매 — 종료 전까지 가격과 입찰자는 비공개입니다.',
+  },
   'auction.list.end.active': {
     en: 'Ends <t:{timestamp}:R>',
     ko: '<t:{timestamp}:R> 에 종료',
@@ -93,6 +103,10 @@ export const translations = {
     en: 'Start price and collateral ratio can only be changed before any bids are placed.',
     ko: '입찰이 없는 경우에만 시작가와 담보율을 수정할 수 있습니다.',
   },
+  'auction.edit.vickreyOnly': {
+    en: 'Vickrey notifications can only be toggled on Vickrey-mode auctions.',
+    ko: '비크리 경매에서만 익명 입찰 알림을 설정할 수 있습니다.',
+  },
   'auction.edit.success': {
     en: '✅ Auction #{id} updated (current title: {title}).',
     ko: '✅ 경매 #{id}가 수정되었습니다 (현재 제목: {title}).',
@@ -118,6 +132,14 @@ export const translations = {
       '**새 금액:** {amount} sats\n' +
       '**입찰자:** {bidderDisplay}\n\n' +
       '{endNote}',
+  },
+  'bid.success.vickreyNotify': {
+    en: '✅ Bid accepted. Posting an anonymous update in the channel.',
+    ko: '✅ 입찰이 접수되었습니다. 채널에 익명 안내를 올립니다.',
+  },
+  'bid.success.vickreySilent': {
+    en: '✅ Bid accepted. This sealed auction stays silent until it closes.',
+    ko: '✅ 입찰이 접수되었습니다. 이 비크리 경매는 종료 전까지 비공개로 유지됩니다.',
   },
   'bid.privacyNotice': {
     en: 'Your bid has been recorded anonymously. Good luck!',
@@ -171,6 +193,10 @@ export const translations = {
       '**입찰 잠금:** {locked} sats\n' +
       '**총합:** {total} sats',
   },
+  'auction.vickrey.newBid': {
+    en: '🔏 A new anonymous bid was placed on auction #{id} ({title}).',
+    ko: '🔏 경매 #{id} ({title})에 새로운 익명 입찰이 들어왔습니다.',
+  },
   'auction.result.privacy': {
     en: 'Auction ended. Sold to an anonymous buyer for {amount} sats.',
     ko: '경매가 종료되었습니다. 익명의 구매자에게 {amount} sats에 판매되었습니다.',
@@ -178,6 +204,18 @@ export const translations = {
   'auction.result.public': {
     en: 'Auction ended. Sold to {winner} for {amount} sats.',
     ko: '경매가 종료되었습니다. {winner} 님이 {amount} sats에 낙찰되었습니다.',
+  },
+  'auction.vickrey.result.public': {
+    en:
+      '🔏 Vickrey auction #{id} "{title}" ended.\n' +
+      'Winner: {alias}\n' +
+      'Highest bid: {highest} sats\n' +
+      'Price to settle (second-highest): {second} sats.',
+    ko:
+      '🔏 비크리 경매 #{id} "{title}"가 종료되었습니다.\n' +
+      '우승자: {alias}\n' +
+      '최고 입찰가: {highest} sats\n' +
+      '정산 금액(2등 입찰가): {second} sats.',
   },
   'auction.result.noBids': {
     en: 'Auction ended without any bids.',
